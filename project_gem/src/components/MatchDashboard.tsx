@@ -1,85 +1,70 @@
-import { Player, PlayerRound, Team } from '../types';
-import { calculateLossBonus } from '../utils/economicCalculations'; // Nouvelle fonction importée
+// src/components/MatchDashboard.tsx
 
-interface MatchDashboardProps {
-  currentRound: number;
-  // Les scores et séries de défaites sont passés séparément pour la clarté de l'UI
-  ctScore: number;
-  tScore: number;
-  ctLossStreak: number;
-  tLossStreak: number;
-  players: Player[];
-  playerRounds: Record<string, PlayerRound>;
-}
+import { useMatchState } from '../state/MatchContext';
+import { getGuaranteedLossBonus } from '../utils/economicCalculations';
+import { DollarSign, User } from 'lucide-react';
 
-export function MatchDashboard({
-  currentRound,
-  ctScore,
-  tScore,
-  ctLossStreak,
-  tLossStreak,
-  players,
-  playerRounds,
-}: MatchDashboardProps) {
+// Le composant n'a plus besoin de props car il utilise le contexte.
+interface MatchDashboardProps {}
+
+export function MatchDashboard({}: MatchDashboardProps) {
+  const { state } = useMatchState();
+  const {
+    currentRound,
+    ctScore,
+    tScore,
+    ctLossStreak,
+    tLossStreak,
+    players,
+    playerRoundStates, // Renommé pour correspondre au Reducer
+    phase, // Ajout de la phase pour l'affichage conditionnel
+  } = state;
+
   const ctPlayers = players.filter(p => p.team === 'CT');
   const tPlayers = players.filter(p => p.team === 'T');
 
-  // --- Calculs des Totaux d'Équipe ---
-
+  // Utilisation de playerRoundStates pour les calculs
   const ctTotalMoney = ctPlayers.reduce((sum, p) => {
-    const pr = playerRounds[p.id];
+    const pr = playerRoundStates[p.id];
     return sum + (pr?.money || 0);
   }, 0);
 
   const tTotalMoney = tPlayers.reduce((sum, p) => {
-    const pr = playerRounds[p.id];
+    const pr = playerRoundStates[p.id];
     return sum + (pr?.money || 0);
   }, 0);
 
-  // Utilisation de equipmentValue à la place de buyValue
-  const ctTotalEquipmentValue = ctPlayers.reduce((sum, p) => {
-    const pr = playerRounds[p.id];
-    return sum + (pr?.equipmentValue || 0);
+  const ctTotalBuyValue = ctPlayers.reduce((sum, p) => {
+    const pr = playerRoundStates[p.id];
+    return sum + (pr?.buyValue || 0);
   }, 0);
 
-  // Utilisation de equipmentValue à la place de buyValue
-  const tTotalEquipmentValue = tPlayers.reduce((sum, p) => {
-    const pr = playerRounds[p.id];
-    return sum + (pr?.equipmentValue || 0);
+  const tTotalBuyValue = tPlayers.reduce((sum, p) => {
+    const pr = playerRoundStates[p.id];
+    return sum + (pr?.buyValue || 0);
   }, 0);
-  
-  // --- Bonus de Perte Garanti pour le Prochain Round ---
-  // On calcule le bonus de perte que l'équipe recevra si elle perd le round ACTUEL.
-  // Note: ctLossStreak et tLossStreak représentent la série de défaites AVANT le round actuel.
-  // Si ctLossStreak = 0, la prochaine perte (série 1) donnera $1400.
-  
-  // La série de défaites pour le prochain round sera (série actuelle + 1), clampée à 4
-  const ctLossStreakForNextRound = Math.min(4, ctLossStreak + 1);
-  const tLossStreakForNextRound = Math.min(4, tLossStreak + 1);
-  
-  // On utilise la fonction de calcul mise à jour (doit être importée)
-  const ctGuaranteedBonus = calculateLossBonus(ctLossStreakForNextRound);
-  const tGuaranteedBonus = calculateLossBonus(tLossStreakForNextRound);
 
+  // Le calcul du bonus est toujours basé sur la séquence de défaites
+  const ctGuaranteedBonus = getGuaranteedLossBonus(ctLossStreak);
+  const tGuaranteedBonus = getGuaranteedLossBonus(tLossStreak);
 
   return (
-    <div className="bg-white border-b border-gray-200 shadow-lg">
+    <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
       <div className="max-w-7xl mx-auto px-6 py-6">
+        
+        {/* En-tête : Titre, Manche et Score */}
         <div className="flex items-center justify-between mb-6">
-          
-          {/* Logo / Titre */}
           <div>
             <h1 className="text-3xl font-bold text-gray-900">EcoStrike.gg</h1>
             <p className="text-sm text-gray-500 mt-1">CS2 Economy Tracker</p>
           </div>
-          
-          {/* Round Actuel */}
           <div className="text-center">
             <div className="text-sm text-gray-600 mb-1">Round</div>
             <div className="text-4xl font-bold text-gray-900">{currentRound}</div>
+            <div className="text-xs font-medium text-purple-600 mt-1">
+                {phase === 'FreezeTime' ? 'ACHAT EN COURS' : 'MANCHE EN COURS'}
+            </div>
           </div>
-          
-          {/* Score */}
           <div className="flex items-center gap-8">
             <div className="text-center">
               <div className="text-sm text-blue-600 font-medium mb-1">CT Score</div>
@@ -93,52 +78,69 @@ export function MatchDashboard({
           </div>
         </div>
 
-        {/* Détails Économiques des Équipes */}
+        {/* Tableau de bord Économique */}
         <div className="grid grid-cols-2 gap-6">
           
-          {/* CT Panel */}
+          {/* CT Dashboard */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xl font-bold text-blue-900">Counter-Terrorists</h3>
-              <div className="text-md font-semibold text-blue-700">Loss Streak: **{ctLossStreak}**</div>
+              <h3 className="text-lg font-semibold text-blue-900">Counter-Terrorists</h3>
+              <div className="text-sm font-medium text-blue-700 flex items-center gap-1">
+                 <User className='w-4 h-4'/> Total Players: {ctPlayers.length}
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
-                <div className="text-xs text-blue-700 mb-1">Team Cash</div>
-                <div className="text-2xl font-bold text-blue-900">${ctTotalMoney.toLocaleString()}</div>
+                <div className="text-xs text-blue-700 mb-1">Total Team Money</div>
+                <div className="text-2xl font-bold text-blue-900 flex items-center gap-1">
+                    <DollarSign className='w-5 h-5'/> {ctTotalMoney.toLocaleString()}
+                </div>
               </div>
               <div>
-                <div className="text-xs text-blue-700 mb-1">Team Value (Total Buy)</div>
-                <div className="text-2xl font-bold text-blue-900">${ctTotalEquipmentValue.toLocaleString()}</div>
+                <div className="text-xs text-blue-700 mb-1">Buy Value (Total Gear)</div>
+                <div className="text-2xl font-bold text-blue-900">${ctTotalBuyValue.toLocaleString()}</div>
               </div>
               <div>
-                <div className="text-xs text-blue-700 mb-1">Guaranteed Loss Bonus (Next Round)</div>
-                <div className="text-xl font-bold text-blue-900">${ctGuaranteedBonus.toLocaleString()}</div>
+                <div className="text-xs text-blue-700 mb-1">Loss Streak</div>
+                <div className={`text-2xl font-bold ${ctLossStreak > 0 ? 'text-orange-600' : 'text-blue-900'}`}>{ctLossStreak}</div>
+              </div>
+              <div>
+                <div className="text-xs text-blue-700 mb-1">Next Loss Bonus</div>
+                <div className="text-2xl font-bold text-blue-900">${ctGuaranteedBonus.toLocaleString()}</div>
               </div>
             </div>
           </div>
 
-          {/* T Panel */}
+          {/* T Dashboard */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xl font-bold text-red-900">Terrorists</h3>
-              <div className="text-md font-semibold text-red-700">Loss Streak: **{tLossStreak}**</div>
+              <h3 className="text-lg font-semibold text-red-900">Terrorists</h3>
+              <div className="text-sm font-medium text-red-700 flex items-center gap-1">
+                 <User className='w-4 h-4'/> Total Players: {tPlayers.length}
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
-                <div className="text-xs text-red-700 mb-1">Team Cash</div>
-                <div className="text-2xl font-bold text-red-900">${tTotalMoney.toLocaleString()}</div>
+                <div className="text-xs text-red-700 mb-1">Total Team Money</div>
+                <div className="text-2xl font-bold text-red-900 flex items-center gap-1">
+                    <DollarSign className='w-5 h-5'/> {tTotalMoney.toLocaleString()}
+                </div>
               </div>
               <div>
-                <div className="text-xs text-red-700 mb-1">Team Value (Total Buy)</div>
-                <div className="text-2xl font-bold text-red-900">${tTotalEquipmentValue.toLocaleString()}</div>
+                <div className="text-xs text-red-700 mb-1">Buy Value (Total Gear)</div>
+                <div className="text-2xl font-bold text-red-900">${tTotalBuyValue.toLocaleString()}</div>
               </div>
               <div>
-                <div className="text-xs text-red-700 mb-1">Guaranteed Loss Bonus (Next Round)</div>
-                <div className="text-xl font-bold text-red-900">${tGuaranteedBonus.toLocaleString()}</div>
+                <div className="text-xs text-red-700 mb-1">Loss Streak</div>
+                <div className={`text-2xl font-bold ${tLossStreak > 0 ? 'text-orange-600' : 'text-red-900'}`}>{tLossStreak}</div>
+              </div>
+              <div>
+                <div className="text-xs text-red-700 mb-1">Next Loss Bonus</div>
+                <div className="text-2xl font-bold text-red-900">${tGuaranteedBonus.toLocaleString()}</div>
               </div>
             </div>
           </div>
+          
         </div>
       </div>
     </div>

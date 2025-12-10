@@ -1,223 +1,184 @@
+// src/App.tsx
+
 import { useState } from 'react';
 import { MatchDashboard } from './components/MatchDashboard';
 import { PlayerTable } from './components/PlayerTable';
 import { EquipmentPurchase } from './components/EquipmentPurchase';
 import { RoundTransition } from './components/RoundTransition';
-import { Player, PlayerRound, MatchState, RoundResult } from './types';
-import { ECONOMIC_CONSTANTS } from './data/cs2Equipment'; // Utilisation des constantes importées
-import { calculateBuyValue } from './utils/economicCalculations'; // Nécessaire pour la phase d'achat
-import { applyRoundEndEconomy } from './utils/economicCalculations'; // Nouvelle fonction centrale
+// L'import de ces types est maintenant géré via useMatchState/types :
+// import { Player, PlayerRound, MatchState, RoundResult } from './types'; 
+// import { ECONOMIC_CONSTANTS, STARTING_PISTOLS } from './data/cs2Equipment';
+// import { calculateBuyValue, calculateRoundReward, getNextLossStreak } from './utils/economicCalculations';
 import { ArrowRight } from 'lucide-react';
+import { useMatchState } from './state/MatchContext'; // Import du hook
+import { MatchConfig } from './components/MatchConfig'; // Nouveau composant de configuration
+import { Team } from './types'; // Import de Team pour la configuration initiale
 
-/**
- * Initialise l'état de la partie pour le début du Match (Round 1).
- */
-function initializeMatch(): MatchState {
-  const players: Player[] = [];
-  const playerRounds: Record<string, PlayerRound> = {};
-
-  // Création des joueurs CT
-  for (let i = 1; i <= 5; i++) {
-    const ctPlayer: Player = {
-      id: `ct-${i}`,
-      name: `CT ${i}`,
-      team: 'CT',
-      position: i,
-    };
-    players.push(ctPlayer);
-
-    playerRounds[ctPlayer.id] = {
-      playerId: ctPlayer.id,
-      money: ECONOMIC_CONSTANTS.startingMoney,
-      equipmentValue: 0, // Initialisation de la valeur d'équipement
-      isAlive: true,
-      // Équipement de départ du pistolet
-      armor: 'none',
-      primaryWeapon: '',
-      secondaryWeapon: 'USP-S', // Pistolet de départ
-      grenades: [],
-      hasDefuseKit: false,
-      hasZeus: false,
-      kills: 0, // Initialisation des kills
-    };
-  }
-
-  // Création des joueurs T
-  for (let i = 1; i <= 5; i++) {
-    const tPlayer: Player = {
-      id: `t-${i}`,
-      name: `T ${i}`,
-      team: 'T',
-      position: i,
-    };
-    players.push(tPlayer);
-
-    playerRounds[tPlayer.id] = {
-      playerId: tPlayer.id,
-      money: ECONOMIC_CONSTANTS.startingMoney,
-      equipmentValue: 0, // Initialisation de la valeur d'équipement
-      isAlive: true,
-      // Équipement de départ du pistolet
-      armor: 'none',
-      primaryWeapon: '',
-      secondaryWeapon: 'Glock-18', // Pistolet de départ
-      grenades: [],
-      hasDefuseKit: false,
-      hasZeus: false,
-      kills: 0, // Initialisation des kills
-    };
-  }
-
-  return {
-    currentRound: 1,
-    teamScores: { CT: 0, T: 0 }, // Score mis à jour en objet
-    teamLossStreaks: { CT: 0, T: 0 }, // Series de défaites
-    players,
-    playerRounds,
-    roundHistory: [], // Historique des résultats de round
-    phase: 'buy', // Nouvelle propriété pour la phase (buy/active/transition)
-  };
-}
+// La fonction initializeMatch n'est plus nécessaire ici.
 
 function App() {
-  const [matchState, setMatchState] = useState<MatchState>(() => initializeMatch());
+  // Remplacer useState par useMatchState
+  const { state, dispatch } = useMatchState();
+
+  // Les états locaux pour l'UI restent ici
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
-  const [isRoundTransitionOpen, setIsRoundTransitionOpen] = useState(false);
+  
+  // Le besoin de showRoundTransition change de rôle.
+  // Maintenant, la phase 'RoundEndSummary' contrôle l'affichage de RoundTransition.
+  // Nous utilisons l'état global 'state.phase'
 
-  // Gère l'achat d'équipement
-  const updatePlayerRound = (playerId: string, updates: Partial<PlayerRound>) => {
-    setMatchState(prev => {
-      const updatedPlayerRound = { ...prev.playerRounds[playerId], ...updates };
-      
-      // La fonction calculeBuyValue doit être mise à jour pour utiliser les prix de l'équipement
-      const equipmentValue = calculateBuyValue(updatedPlayerRound); 
-      
-      // L'argent dépensé est (equipmentValue - ancienne valeur d'équipement)
-      const cost = equipmentValue - prev.playerRounds[playerId].equipmentValue;
-      const newMoney = prev.playerRounds[playerId].money - cost;
+  const selectedPlayer = state.players.find(p => p.id === selectedPlayerId);
 
-      return {
-        ...prev,
-        playerRounds: {
-          ...prev.playerRounds,
-          [playerId]: {
-            ...updatedPlayerRound,
-            equipmentValue: equipmentValue, // Sauvegarder la nouvelle valeur d'équipement
-            money: newMoney,
-          },
-        },
-      };
-    });
+  // --- Rendu Conditionnel Basé sur la Phase ---
+
+  if (state.phase === 'Config') {
+    // Afficher la configuration initiale (Choix de mode, Saisie des noms/USP-S vs P2000)
+    return <MatchConfig dispatch={dispatch} />;
+  }
+
+  // Si on est en phase de résumé, on affiche le composant de transition pour la saisie
+  const isTransitionPhase = state.phase === 'RoundEndSummary' || state.phase === 'HalfTime' || state.phase === 'OvertimeStart';
+  
+  // La fonction pour déclencher la transition de manche (RoundEndSummary) est désormais un dispatch
+  const handleTransitionClick = () => {
+    // Si la manche est finie (après le chronomètre), on passe à la saisie des résultats
+    if (state.phase === 'RoundDuration') {
+      dispatch({ type: 'SET_PHASE', payload: 'RoundEndSummary' });
+    }
   };
 
-  // Met à jour le nom du joueur
-  const updatePlayerName = (playerId: string, name: string) => {
-    setMatchState(prev => ({
-      ...prev,
-      players: prev.players.map(p =>
-        p.id === playerId ? { ...p, name } : p
-      ),
-    }));
-  };
-
-  // Met à jour le statut de survie (utilisé dans RoundTransition)
-  const updatePlayerAlive = (playerId: string, isAlive: boolean) => {
-    setMatchState(prev => ({
-      ...prev,
-      playerRounds: {
-        ...prev.playerRounds,
-        [playerId]: {
-          ...prev.playerRounds[playerId],
-          isAlive,
-        },
-      },
-    }));
-  };
-
-  /**
-   * Gère la fin du round, applique l'économie et passe au round suivant.
-   * Signature mise à jour pour inclure les kills.
-   */
-  const handleNextRound = (result: RoundResult, survivorIds: string[], kills: Record<string, number>) => {
-    setMatchState(prev => {
-      // 1. Appliquer la logique économique et les bonus
-      // Cette fonction retourne un nouvel état avec les nouveaux montants d'argent et loss streaks.
-      let nextState = applyRoundEndEconomy(prev, result, kills);
-
-      // 2. Mettre à jour les scores (basé sur le gagnant)
-      const newScores = { ...prev.teamScores };
-      newScores[result.winner]++;
-
-      // 3. Logique de mi-temps et OT (simplifié: juste le changement de côté pour la mi-temps)
-      // Ceci est un placeholder, la vraie logique est plus complexe (swap des équipes à R16, etc.)
-      // const isHalftime = prev.currentRound === 15;
-      
-      return {
-        ...nextState, // Contient déjà les playerRounds, money et loss streaks mis à jour
-        currentRound: prev.currentRound + 1,
-        teamScores: newScores,
-        roundHistory: [...prev.roundHistory, result],
-        phase: 'buy', // Retour à la phase d'achat
-      };
-    });
-
-    setIsRoundTransitionOpen(false);
-  };
-
-  const selectedPlayer = matchState.players.find(p => p.id === selectedPlayerId);
 
   return (
     <div className="min-h-screen bg-gray-100">
+      
+      {/* 1. Dashboard et Score */}
       <MatchDashboard
-        currentRound={matchState.currentRound}
-        ctScore={matchState.teamScores.CT}
-        tScore={matchState.teamScores.T}
-        ctLossStreak={matchState.teamLossStreaks.CT}
-        tLossStreak={matchState.teamLossStreaks.T}
-        players={matchState.players}
-        playerRounds={matchState.playerRounds}
+        currentRound={state.currentRound}
+        ctScore={state.CT.score}
+        tScore={state.T.score}
+        ctLossStreak={state.CT.lossStreak}
+        tLossStreak={state.T.lossStreak}
+        phase={state.phase} // Ajout de phase pour le chronomètre
       />
-
+      
+      {/* 2. Tableau des Joueurs (pour visualiser l'état) */}
       <PlayerTable
-        players={matchState.players}
-        playerRounds={matchState.playerRounds}
-        onPlayerNameChange={updatePlayerName}
-        onEquipmentClick={setSelectedPlayerId}
+        players={state.players}
+        playerRoundStates={state.playerRoundStates}
+        // Ces fonctions devront être refactorisées pour utiliser dispatch dans PlayerTable
+        onEquipmentClick={setSelectedPlayerId} 
+        onPlayerNameChange={(playerId, name) => { /* Logic with dispatch required */ }}
       />
-
+      
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <button
-          onClick={() => setIsRoundTransitionOpen(true)}
-          className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-3 shadow-lg"
-        >
-          <span className="text-lg">Entrer les Résultats et Passer au Round Suivant</span>
-          <ArrowRight className="w-6 h-6" />
-        </button>
+        {/* Bouton de Transition - Maintenant basé sur la phase 'RoundDuration' */}
+        {state.phase === 'RoundDuration' && (
+          <button
+            onClick={handleTransitionClick}
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-3 shadow-lg 
+                       // AJOUTER ICI L'EFFET DYNAMIQUE (surbrillance) après la fin du chronomètre
+                      "
+          >
+            <span className="text-lg">Fin de Manche / Saisie des Résultats</span>
+            <ArrowRight className="w-6 h-6" />
+          </button>
+        )}
       </div>
 
-      {/* Modale d'Achat d'Équipement */}
-      {selectedPlayer && selectedPlayerId && (
+      {/* 3. Pop-up d'Achat (FreezeTime / OvertimeStart) */}
+      {selectedPlayer && selectedPlayerId && (state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') && (
         <EquipmentPurchase
           player={selectedPlayer}
-          playerRound={matchState.playerRounds[selectedPlayerId]}
-          onUpdate={(updates) => updatePlayerRound(selectedPlayerId, updates)}
+          playerRoundState={state.playerRoundStates[selectedPlayerId]}
+          onPurchase={(input) => dispatch({ type: 'BUY_EQUIPMENT', payload: input })} // Utilisation du dispatch
           onClose={() => setSelectedPlayerId(null)}
         />
       )}
 
-      {/* Modale de Transition de Round */}
-      {isRoundTransitionOpen && (
+      {/* 4. Pop-up de Saisie des Événements (RoundEndSummary) */}
+      {isTransitionPhase && (
         <RoundTransition
-          players={matchState.players}
-          playerRounds={matchState.playerRounds}
-          // Signature mise à jour pour correspondre au composant
-          onNextRound={handleNextRound} 
-          onClose={() => setIsRoundTransitionOpen(false)}
-          onUpdatePlayerAlive={updatePlayerAlive}
+          matchState={state}
+          dispatch={dispatch}
+          onClose={() => dispatch({ type: 'SET_PHASE', payload: 'FreezeTime' })}
+          // La logique de fin de manche est maintenant dans RoundTransition qui appelle 'APPLY_ROUND_RESULT'
         />
       )}
+      
+      {/* TODO: Gérer l'affichage des joueurs pendant la phase RoundDuration si l'on veut un affichage minimaliste */}
+      
     </div>
   );
 }
 
 export default App;
+
+
+// ------------------ NOUVEAU COMPOSANT À CRÉER ------------------
+// (Créer ce fichier src/components/MatchConfig.tsx)
+
+interface MatchConfigProps {
+  dispatch: React.Dispatch<MatchAction>;
+}
+
+// NOTE: Ce composant doit afficher le pop-up pour saisir le Mode de Match (Standard/Premier) 
+// et les choix de pistolet par défaut pour chaque joueur CT (USP-S/P2000) avant d'appeler 
+// dispatch({ type: 'SET_INITIAL_CONFIG', payload: { mode: ..., players: ... } }) 
+// puis dispatch({ type: 'START_MATCH' })
+const MatchConfig: React.FC<MatchConfigProps> = ({ dispatch }) => {
+    // ... Logique de formulaire et d'initialisation des 10 joueurs ...
+    
+    // Exemple d'initialisation des 10 joueurs pour la configuration :
+    const getInitialPlayers = (mode: MatchMode): Player[] => {
+        // ... (Logique pour créer les 10 joueurs avec ID/Team/Pistolet par défaut) ...
+        const players: Player[] = [];
+        // Création de 5 CTs
+        for (let i = 1; i <= 5; i++) {
+            players.push({
+                id: `CT-${i}`,
+                name: `CT Player ${i}`,
+                team: 'CT' as Team,
+                position: i,
+                defaultPistol: (i === 1 || i === 3 || i === 5) ? 'USP-S' : 'P2000', // Exemple de choix
+            });
+        }
+        // Création de 5 Ts
+        for (let i = 1; i <= 5; i++) {
+             players.push({
+                id: `T-${i}`,
+                name: `T Player ${i}`,
+                team: 'T' as Team,
+                position: i,
+                defaultPistol: 'GLOCK', // Fixé
+            });
+        }
+        return players;
+    };
+    
+    const handleStartMatch = (mode: MatchMode) => {
+        const configuredPlayers = getInitialPlayers(mode);
+        dispatch({ type: 'SET_INITIAL_CONFIG', payload: { mode, players: configuredPlayers } });
+        dispatch({ type: 'START_MATCH' });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+                <h2 className="text-2xl font-bold mb-6 text-center">Configuration EcoStrike.gg</h2>
+                {/* Formulaire de sélection du mode */}
+                <button 
+                    className="w-full bg-blue-600 text-white py-3 rounded mb-4 hover:bg-blue-700 transition"
+                    onClick={() => handleStartMatch('Premier')}
+                >
+                    Démarrer en Mode Premier (avec Prolongation)
+                </button>
+                 <button 
+                    className="w-full bg-orange-600 text-white py-3 rounded hover:bg-orange-700 transition"
+                    onClick={() => handleStartMatch('Standard')}
+                >
+                    Démarrer en Mode Compétitif Standard (Max 12-12)
+                </button>
+            </div>
+        </div>
+    );
+};
