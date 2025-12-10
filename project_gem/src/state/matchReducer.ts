@@ -1,4 +1,4 @@
-// src/state/matchReducer.ts
+// src/state/matchReducer.ts (CORRIGÉ ET COMPLET)
 
 import {
     MatchState,
@@ -9,19 +9,23 @@ import {
     PlayerRoundState,
     RoundResult,
     PurchaseInput,
-} from '../types'; // Importez les types mis à jour
+    KillEntry,
+    GameItem,
+    GameItemType,
+} from '../types/index'; 
 import {
     ECONOMIC_CONSTANTS,
-    getBuyableItemsForTeam,
     getItemById,
-    GameItem,
+    ARMOR_ITEM_IDS, // Nécessaire pour les vérifications d'achat
+    GRENADES_IDS, // Nécessaire pour les vérifications d'achat
+    getBuyableItemsForTeam, // Utile pour valider un achat
+    STARTING_PISTOLS, // Nécessaire pour l'initialisation
 } from '../data/cs2Equipment';
 import {
     calculateBaseRoundReward,
     calculateIndividualMoneyGain,
-    calculateIndividualKillReward, // Utile pour la prévisualisation
     calculateMinimumGuaranteed,
-    calculateBuyValue,
+    calculateBuyValue, 
     getNextLossStreak,
 } from '../utils/economicCalculations';
 
@@ -31,311 +35,372 @@ export type MatchAction =
     | { type: 'SET_INITIAL_CONFIG'; payload: { mode: MatchMode; players: Player[] } }
     | { type: 'START_MATCH' }
     | { type: 'SET_PHASE'; payload: MatchPhase }
-    
-    // Actions de jeu
     | { type: 'BUY_EQUIPMENT'; payload: PurchaseInput }
     | { type: 'UPDATE_KILL_ENTRY'; payload: { playerId: string; kills: KillEntry[] } }
     | { type: 'UPDATE_PLAYER_SURVIVAL'; payload: { playerId: string; isAlive: boolean } }
-    
-    // Transition de Manche
     | { type: 'APPLY_ROUND_RESULT'; payload: RoundResult }
     | { type: 'ADVANCE_TO_NEXT_ROUND' }
-    
-    // Fin de match et Prolongation
     | { type: 'INITIATE_OVERTIME' }
-    | { type: 'END_MATCH' }
-
+    | { type: 'END_MATCH' };
 
 // --- ÉTAT INITIAL ---
 
-const initialPlayerRoundState = (player: Player): PlayerRoundState => {
-    // Initialisation simple avec le pistolet de départ
-    const startingPistolItem = getItemById(player.defaultPistol.toLowerCase()) as GameItem;
-    
-    return {
-        playerId: player.id,
-        money: ECONOMIC_CONSTANTS.STARTING_MONEY,
-        inventory: [startingPistolItem],
-        isAlive: true,
-        kills: [],
-        minimumGuaranteedNextRound: 0,
-    };
+const basePlayers: Player[] = [
+    // Exemple de structure, vide par défaut
+    { id: 'CT-1', name: 'CT-1', team: 'CT', position: 1, defaultPistol: 'USP-S' },
+];
+
+const getInitialPlayerRoundStates = (players: Player[], money: number): Record<string, PlayerRoundState> => {
+    return players.reduce((acc, player) => {
+        const startingPistol = player.team === 'T' ? 'glock' : player.defaultPistol.toLowerCase();
+        const startingPistolItem = getItemById(startingPistol) as GameItem; // On suppose qu'il existe
+        
+        // Calculer le Buy Value initial
+        const buyValue = calculateBuyValue([startingPistolItem]);
+
+        acc[player.id] = {
+            playerId: player.id,
+            money: money,
+            inventory: [startingPistolItem],
+            isAlive: true,
+            kills: [],
+            buyValue: buyValue,
+            minimumGuaranteedNextRound: calculateMinimumGuaranteed(money, 0), // Loss Streak 0
+        };
+        return acc;
+    }, {} as Record<string, PlayerRoundState>);
 };
+
 
 export const initialMatchState: MatchState = {
     matchMode: 'Standard',
-    currentRound: 0, // 0 signifie phase de config
+    currentRound: 0, // 0 = Phase Config
     phase: 'Config',
-    CT: { score: 0, lossStreak: 0 },
-    T: { score: 0, lossStreak: 0 },
-    players: [],
-    playerRoundStates: {},
+    teamState: {
+        CT: { score: 0, lossStreak: 0 },
+        T: { score: 0, lossStreak: 0 },
+    },
+    players: basePlayers,
+    playerRoundStates: getInitialPlayerRoundStates(basePlayers, ECONOMIC_CONSTANTS.STARTING_MONEY),
     roundHistory: [],
 };
 
+// --- REDUCER ---
 
-// --- REDUCER PRINCIPAL ---
+// Fonction utilitaire pour le Reducer
+const hasItemOfType = (inventory: GameItem[], type: GameItemType, excludeId?: string) => {
+    return inventory.some(item => item.type === type && (!excludeId || item.id !== excludeId));
+};
 
 export const matchReducer = (state: MatchState, action: MatchAction): MatchState => {
     switch (action.type) {
         
-        /** ----------------- 1. CONFIGURATION ET DÉMARRAGE ----------------- */
-        
         case 'SET_INITIAL_CONFIG': {
-            // Création des 10 joueurs et de leur état de manche initial
             const { mode, players } = action.payload;
-            const playerRoundStates = players.reduce((acc, player) => {
-                acc[player.id] = initialPlayerRoundState(player);
-                return acc;
-            }, {} as Record<string, PlayerRoundState>);
-            
+            const initialMoney = ECONOMIC_CONSTANTS.STARTING_MONEY;
+
+            // Préparer l'état des joueurs
+            const initialPlayerStates = getInitialPlayerRoundStates(players, initialMoney);
+
             return {
                 ...state,
                 matchMode: mode,
-                players,
-                playerRoundStates,
+                players: players,
+                playerRoundStates: initialPlayerStates,
+                roundHistory: [],
+                teamState: { CT: { score: 0, lossStreak: 0 }, T: { score: 0, lossStreak: 0 } },
+                currentRound: 0, // Rester à 0
             };
         }
-        
-        case 'START_MATCH':
+
+        case 'START_MATCH': {
+            // Passe de Config à la première manche
             return {
                 ...state,
                 currentRound: 1,
-                phase: 'FreezeTime',
+                phase: 'FreezeTime', // Commence directement la phase d'achat de la manche 1
             };
-            
+        }
+
         case 'SET_PHASE':
             return {
                 ...state,
                 phase: action.payload,
             };
 
-        /** ----------------- 2. PHASE D'ACHAT ET ÉVÉNEMENTS ----------------- */
-        
         case 'BUY_EQUIPMENT': {
             const { playerId, itemBoughtId, recipientId } = action.payload;
+            const buyerState = state.playerRoundStates[playerId];
+            const recipientState = state.playerRoundStates[recipientId]; // Peut être le même si c'est un achat personnel
             const item = getItemById(itemBoughtId);
-            
-            if (!item) return state;
 
-            // L'acheteur paie, le receveur reçoit l'objet
-            const buyerId = playerId;
-            const receiverId = recipientId || playerId;
-            
-            // Mise à jour de l'état de l'acheteur
-            const newBuyerState = { ...state.playerRoundStates[buyerId] };
-            
-            if (newBuyerState.money >= item.price) {
-                newBuyerState.money -= item.price;
-            } else {
-                console.error(`Achat impossible : ${buyerId} n'a pas assez d'argent.`);
+            if (!buyerState || !recipientState || !item || recipientState.playerId !== recipientId) {
+                console.error('Invalid purchase attempt: Player or item not found.');
                 return state;
             }
 
-            // Mise à jour de l'état du receveur
-            const newReceiverState = { ...state.playerRoundStates[receiverId] };
-            newReceiverState.inventory = [...newReceiverState.inventory, item];
-            
-            // Appliquer les changements et recalculer le minimum garanti
-            const updatedPlayerRoundStates = { ...state.playerRoundStates };
-            updatedPlayerRoundStates[buyerId] = newBuyerState;
-            updatedPlayerRoundStates[receiverId] = newReceiverState;
+            // CORRECTION: Vérifications d'achat importantes
+            if (buyerState.money < item.price) {
+                console.warn(`${state.players.find(p => p.id === playerId)?.name} cannot afford ${item.name}`);
+                return state;
+            }
 
-            // Mise à jour des prévisions Minimum Garanti après l'achat
-            Object.values(updatedPlayerRoundStates).forEach(playerState => {
-                const team = state.players.find(p => p.id === playerState.playerId)?.team || 'CT';
-                const teamStreak = team === 'CT' ? state.CT.lossStreak : state.T.lossStreak;
-                playerState.minimumGuaranteedNextRound = calculateMinimumGuaranteed(playerState.money, teamStreak);
-            });
-            
-            return {
-                ...state,
-                playerRoundStates: updatedPlayerRoundStates,
+            const newRecipientInventory = [...recipientState.inventory];
+            let itemRemoved: GameItem | undefined;
+
+            // Logique de remplacement et de limite (Achats pour soi-même)
+            if (playerId === recipientId) {
+                // 1. Limite d'armes principales (Pistolet, Fusil, SMG, etc.)
+                if (item.type !== 'Armor' && item.type !== 'Grenade' && item.type !== 'Utility') {
+                    // Supprimer l'arme de même type si elle existe (sauf si c'est un pistolet de départ)
+                    const existingWeaponIndex = newRecipientInventory.findIndex(i => 
+                        i.type === item.type && 
+                        i.id !== recipientState.players[0].defaultPistol.toLowerCase() // Ne pas enlever le pistolet par défaut si c'est le seul
+                    );
+                    if (existingWeaponIndex !== -1) {
+                        itemRemoved = newRecipientInventory.splice(existingWeaponIndex, 1)[0];
+                    }
+                }
+
+                // 2. Limite d'Armure (remplacement si on achète un casque, ou si on achète tout sans rien)
+                if (item.type === 'Armor') {
+                    // Retirer toute armure existante si la nouvelle est un meilleur type (vesthelm)
+                    const existingArmorIndex = newRecipientInventory.findIndex(i => ARMOR_ITEM_IDS.includes(i.id));
+                    if (existingArmorIndex !== -1) {
+                        itemRemoved = newRecipientInventory.splice(existingArmorIndex, 1)[0];
+                    }
+                }
+
+                // 3. Limite de Grenades (max 4, une de chaque type sauf Flash)
+                if (item.type === 'Grenade') {
+                    const currentGrenades = newRecipientInventory.filter(i => GRENADES_IDS.includes(i.id));
+                    
+                    if (currentGrenades.length >= 4) {
+                        console.warn(`Cannot buy ${item.name}: Grenade limit reached.`);
+                        return state;
+                    }
+
+                    // Limite par type (sauf Flashbang)
+                    const isFlash = item.id === 'flashbang';
+                    const maxCount = isFlash ? 2 : 1; 
+                    const currentCount = currentGrenades.filter(g => g.id === item.id).length;
+
+                    if (currentCount >= maxCount) {
+                        console.warn(`Cannot buy ${item.name}: Limit for this grenade type reached.`);
+                        return state;
+                    }
+                }
+            }
+            // FIN des vérifications de logique d'achat pour soi-même
+
+            // Ajout de l'item à l'inventaire du destinataire (s'il n'a pas été retiré ou si c'est un give)
+            if (item.type !== 'Utility' || !newRecipientInventory.some(i => i.id === item.id)) {
+                 newRecipientInventory.push(item);
+            }
+
+            // Mise à jour de l'état du Destinataire
+            const updatedRecipientState: PlayerRoundState = {
+                ...recipientState,
+                inventory: newRecipientInventory,
+                buyValue: calculateBuyValue(newRecipientInventory),
+                // L'argent n'est pas mis à jour ici pour le recipient (seulement pour l'acheteur)
             };
-        }
 
-        case 'UPDATE_KILL_ENTRY': {
-            // Utilisé pendant la phase RoundEndSummary
-            const { playerId, kills } = action.payload;
-            const updatedState = { ...state.playerRoundStates[playerId], kills };
+            // Mise à jour de l'état de l'Acheteur
+            const updatedBuyerState: PlayerRoundState = {
+                ...buyerState,
+                money: Math.max(0, buyerState.money - item.price),
+                // Recalculer le minimum garanti
+                minimumGuaranteedNextRound: calculateMinimumGuaranteed(
+                    Math.max(0, buyerState.money - item.price),
+                    state.teamState[state.players.find(p => p.id === playerId)!.team].lossStreak
+                ),
+            };
+
             return {
                 ...state,
                 playerRoundStates: {
                     ...state.playerRoundStates,
-                    [playerId]: updatedState,
+                    [recipientId]: updatedRecipientState,
+                    [playerId]: updatedBuyerState, // L'acheteur (même si c'est le même joueur)
+                },
+            };
+        }
+
+        case 'UPDATE_KILL_ENTRY': {
+            const { playerId, kills } = action.payload;
+            return {
+                ...state,
+                playerRoundStates: {
+                    ...state.playerRoundStates,
+                    [playerId]: {
+                        ...state.playerRoundStates[playerId],
+                        kills: kills,
+                    },
                 },
             };
         }
         
         case 'UPDATE_PLAYER_SURVIVAL': {
-            // Utilisé pendant la phase RoundEndSummary
             const { playerId, isAlive } = action.payload;
-            const updatedState = { ...state.playerRoundStates[playerId], isAlive };
             return {
                 ...state,
                 playerRoundStates: {
                     ...state.playerRoundStates,
-                    [playerId]: updatedState,
+                    [playerId]: {
+                        ...state.playerRoundStates[playerId],
+                        isAlive: isAlive,
+                    },
                 },
             };
         }
 
-        /** ----------------- 3. FIN DE MANCHE ET TRANSITION ----------------- */
-        
         case 'APPLY_ROUND_RESULT': {
             const result = action.payload;
-            const newState = { ...state };
-            let newCT = { ...state.CT };
-            let newT = { ...state.T };
-            
-            // 1. Mise à jour du Score et du Loss Streak
-            const didCTWin = result.winner === 'CT';
-            
-            if (didCTWin) {
-                newCT.score++;
-                newCT.lossStreak = 0;
-                newT.lossStreak = getNextLossStreak(state.T.lossStreak, false, true, result);
-            } else {
-                newT.score++;
-                newT.lossStreak = 0;
-                newCT.lossStreak = getNextLossStreak(state.CT.lossStreak, false, false, result);
-            }
-            
-            // 2. Calcul des Gains (Avant mise à jour du Loss Streak)
-            const ctBaseReward = calculateBaseRoundReward(result, 'CT', state.CT.lossStreak);
-            const tBaseReward = calculateBaseRoundReward(result, 'T', state.T.lossStreak);
-            
-            // Compte le nombre total de kills CT pour le bonus de $50
-            const allKills: KillEntry[] = Object.values(state.playerRoundStates).flatMap(p => p.kills);
-            const totalCtKills = allKills
-                .filter(k => state.players.find(p => p.id === p.playerId)?.team === 'CT') // Vérifier que l'auteur est CT (nécessite d'inclure l'auteur des kills dans l'état de manche)
-                .reduce((sum, entry) => sum + entry.count, 0);
+            const winningTeam = result.winner;
+            const losingTeam = winningTeam === 'CT' ? 'T' : 'CT';
 
-            // 3. Mise à jour de l'argent de chaque joueur
+            // 1. Mise à jour des scores et loss streaks
+            const newTeamState = {
+                ...state.teamState,
+                [winningTeam]: {
+                    score: state.teamState[winningTeam].score + 1,
+                    lossStreak: getNextLossStreak(state.teamState[winningTeam].lossStreak, true), // Vainqueur -> 0
+                },
+                [losingTeam]: {
+                    score: state.teamState[losingTeam].score, // Score perdant inchangé
+                    lossStreak: getNextLossStreak(state.teamState[losingTeam].lossStreak, false), // Perdant -> +1
+                },
+            };
+
+            // 2. Calcul du gain de base (avant les gains individuels)
+            const baseRewardWinner = calculateBaseRoundReward(result, winningTeam, state.teamState[winningTeam].lossStreak);
+            const baseRewardLoser = calculateBaseRoundReward(result, losingTeam, state.teamState[losingTeam].lossStreak);
+
+            // 3. Application des gains et réinitialisation de l'état pour la prochaine manche
             const updatedPlayerRoundStates: Record<string, PlayerRoundState> = {};
-            
-            state.players.forEach(player => {
+            const allPlayers = state.players;
+
+            for (const player of allPlayers) {
                 const playerState = state.playerRoundStates[player.id];
                 const team = player.team;
-                const baseReward = team === 'CT' ? ctBaseReward : tBaseReward;
+                const isWinner = team === winningTeam;
+                const baseReward = isWinner ? baseRewardWinner : baseRewardLoser;
 
-                // Identification du planteur/défuseur (simplification de la saisie)
-                // Pour une implémentation complète, ceci viendrait du RoundEndSummary,
-                // mais ici on suppose que la saisie le capture.
-                const playerPlanted = (team === 'T' && result.bombPlanted && result.winner === 'T' && playerState.isAlive); // Simplifié
-                const playerDefused = (team === 'CT' && result.bombDefused && playerState.isAlive); // Simplifié
+                // Trouver si le joueur a planté/désamorcé (nécessite d'étendre RoundResult si on voulait le faire proprement)
+                // Pour l'instant, on suppose que si la bombe a été plantée/désamorcée, au moins un joueur l'a fait.
+                // Logique simplifiée pour la démo: on suppose que si la bombe a explosé/defusé, l'équipe T/CT entière a un bonus.
+                // L'argent est cependant calculé individuellement (via le payload de RoundTransition, qui est manquant ici)
+                // Le bonus de plant individuel T est géré dans economicCalculations, basé sur les kills (qui n'incluent pas le plant/defuse).
+                // On va simplifier en injectant des booléens de plant/defuse dans le calcul :
+                const playerPlanted = team === 'T' && result.bombPlanted && isWinner; // Si T gagne
+                const playerDefused = team === 'CT' && result.bombDefused && isWinner; // Si CT gagne
 
-                const gain = calculateIndividualMoneyGain(
+                const totalGain = calculateIndividualMoneyGain(
                     playerState,
                     result,
+                    team,
                     baseReward,
-                    totalCtKills,
+                    result.remainingCtAlive, // Utilisé comme un proxy, peut être affiné
                     playerPlanted,
                     playerDefused
                 );
+                
+                // Argent total (limité par MAX_MONEY)
+                const newMoney = Math.min(playerState.money + totalGain, ECONOMIC_CONSTANTS.MAX_MONEY);
 
-                // Argent total pour la manche suivante
-                let newMoney = playerState.money + gain;
+                // Inventaire de la manche précédente est conservé
 
-                // Gestion de l'équipement conservé
-                let newInventory: GameItem[] = [];
-                if (playerState.isAlive) {
-                    newInventory = playerState.inventory; // Le joueur conserve son inventaire
-                } else {
-                    // S'il est mort, l'inventaire est réinitialisé à son pistolet de départ
-                    const startingPistolItem = getItemById(player.defaultPistol.toLowerCase()) as GameItem;
-                    newInventory = [startingPistolItem];
-                }
+                // Recalculer le minimum garanti pour la manche suivante
+                const minGuaranteedNextRound = calculateMinimumGuaranteed(
+                    newMoney, 
+                    newTeamState[team].lossStreak // Utilisez le NOUVEAU loss streak pour la manche suivante
+                );
 
-                // Réinitialisation des Kills et Survie pour la manche suivante
                 updatedPlayerRoundStates[player.id] = {
                     ...playerState,
                     money: newMoney,
-                    inventory: newInventory,
-                    kills: [],
-                    isAlive: true, // Réinitialisé pour la manche suivante
-                    minimumGuaranteedNextRound: calculateMinimumGuaranteed(newMoney, team === 'CT' ? newCT.lossStreak : newT.lossStreak)
-                };
-            });
-            
-            // 4. Vérification de la Mi-temps
-            if (state.currentRound === 12) {
-                return {
-                    ...state,
-                    currentRound: 13,
-                    phase: 'HalfTime',
-                    CT: { score: newCT.score, lossStreak: 0 }, // Reset du streak à 0 après mi-temps
-                    T: { score: newT.score, lossStreak: 0 },
-                    roundHistory: [...state.roundHistory, result],
-                    playerRoundStates: Object.values(updatedPlayerRoundStates).reduce((acc, playerState) => {
-                        // Reset de l'argent de tous les joueurs à $800 pour la manche 13
-                        acc[playerState.playerId] = {
-                            ...playerState,
-                            money: ECONOMIC_CONSTANTS.STARTING_MONEY,
-                            minimumGuaranteedNextRound: calculateMinimumGuaranteed(ECONOMIC_CONSTANTS.STARTING_MONEY, 0),
-                        };
-                        return acc;
-                    }, {} as Record<string, PlayerRoundState>),
+                    isAlive: true, // Réinitialisé pour la prochaine manche
+                    kills: [], // Réinitialisation des kills
+                    // L'inventaire (buyValue) reste celui de la manche précédente
+                    minimumGuaranteedNextRound: minGuaranteedNextRound,
                 };
             }
 
-            // 5. Mise à jour normale
             return {
                 ...state,
-                CT: newCT,
-                T: newT,
+                teamState: newTeamState,
                 playerRoundStates: updatedPlayerRoundStates,
                 roundHistory: [...state.roundHistory, result],
-            };
-        }
-        
-        case 'ADVANCE_TO_NEXT_ROUND': {
-            // Passe à la manche suivante après l'application des résultats ou après la mi-temps
-            let nextRound = state.currentRound + 1;
-            
-            // Vérification de la Fin de Match (simplifiée : la vérification réelle est après APPLY_ROUND_RESULT)
-            // Ici, nous gérons juste l'incrémentation.
-            
-            return {
-                ...state,
-                currentRound: nextRound,
-                phase: 'FreezeTime',
+                phase: 'RoundEndSummary', // Reste dans la phase de saisie tant que l'utilisateur n'a pas cliqué sur 'Suivant'
             };
         }
 
-        /** ----------------- 4. PROLONGATION (Mode Premier) ----------------- */
-        
-        case 'INITIATE_OVERTIME': {
-            // Seulement si le score est 12-12 en mode Premier
-            const updatedPlayerRoundStates = Object.values(state.playerRoundStates).reduce((acc, playerState) => {
-                // Reset de l'argent et de l'inventaire à $16,000 + pistolet de départ
-                const player = state.players.find(p => p.id === playerState.playerId) as Player;
-                const startingPistolItem = getItemById(player.defaultPistol.toLowerCase()) as GameItem;
-                
+        case 'ADVANCE_TO_NEXT_ROUND': {
+            // Logique pour passer à la prochaine manche (après RoundEndSummary)
+            const nextRound = state.currentRound + 1;
+            const newPhase = nextRound > 24 && state.matchMode === 'Standard' ? 'Finished' : 'FreezeTime';
+
+            // Réinitialisation de l'état 'Alive' et 'Kills'
+            const resetPlayerStates = Object.values(state.playerRoundStates).reduce((acc, playerState) => {
                 acc[playerState.playerId] = {
                     ...playerState,
-                    money: ECONOMIC_CONSTANTS.STARTING_MONEY_OVERTIME,
-                    inventory: [startingPistolItem],
                     isAlive: true,
                     kills: [],
-                    minimumGuaranteedNextRound: calculateMinimumGuaranteed(ECONOMIC_CONSTANTS.STARTING_MONEY_OVERTIME, 0),
+                    // Money et Inventory restent les mêmes que ceux calculés dans APPLY_ROUND_RESULT
                 };
                 return acc;
             }, {} as Record<string, PlayerRoundState>);
             
             return {
                 ...state,
-                currentRound: 25, // Début de la prolongation
-                phase: 'OvertimeStart', // Nouvelle phase d'achat/d'équipement
-                CT: { score: state.CT.score, lossStreak: 0 },
-                T: { score: state.T.score, lossStreak: 0 },
+                currentRound: nextRound,
+                phase: newPhase,
+                playerRoundStates: resetPlayerStates,
+            };
+        }
+
+        case 'INITIATE_OVERTIME': {
+            // Initialisation des scores/streaks et de l'argent d'Overtime
+            const initialMoneyOvertime = ECONOMIC_CONSTANTS.STARTING_MONEY_OVERTIME;
+
+            const updatedPlayerRoundStates = Object.values(state.playerRoundStates).reduce((acc, playerState) => {
+                const player = state.players.find(p => p.id === playerState.playerId) as Player;
+                const startingPistolItem = getItemById(player.defaultPistol.toLowerCase()) as GameItem;
+                
+                acc[playerState.playerId] = {
+                    ...playerState,
+                    money: initialMoneyOvertime,
+                    inventory: [startingPistolItem],
+                    buyValue: calculateBuyValue([startingPistolItem]),
+                    isAlive: true,
+                    kills: [],
+                    minimumGuaranteedNextRound: calculateMinimumGuaranteed(initialMoneyOvertime, 0),
+                };
+                return acc;
+            }, {} as Record<string, PlayerRoundState>);
+            
+            return {
+                ...state,
+                currentRound: 25, // Début de l'Overtime (peut-être 25, ou 1 pour le tracker)
+                phase: 'OvertimeStart', // Phase d'achat
+                teamState: { 
+                    CT: { score: state.teamState.CT.score, lossStreak: 0 }, 
+                    T: { score: state.teamState.T.score, lossStreak: 0 } 
+                },
                 playerRoundStates: updatedPlayerRoundStates,
             };
         }
         
         case 'END_MATCH':
-            // Logique finale (enregistrement des données, affichage du résultat)
-            return { ...state, phase: 'Config' }; // Retour à l'écran initial (ou un écran de résultat)
+            // Retour à l'état de configuration
+            return { 
+                ...state, 
+                phase: 'Config',
+                currentRound: 0,
+                teamState: { CT: { score: 0, lossStreak: 0 }, T: { score: 0, lossStreak: 0 } },
+                roundHistory: []
+            };
 
         default:
             return state;

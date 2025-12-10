@@ -1,26 +1,26 @@
 // src/components/EquipmentPurchase.tsx
 
-import { X, RefreshCw, HandHolding } from 'lucide-react';
-import { Player, PlayerRoundState, GameItem } from '../types';
+import { X, RefreshCw } from 'lucide-react'; // 'HandHolding' corrigé ou retiré
+import { Player, PlayerRoundState, GameItem } from '../types/index';  // Import de GameItem
 import { useMatchState } from '../state/MatchContext';
 import { 
     getBuyableItemsForTeam,
     getItemById,
-    ARMOR_ITEM_IDS,
-    ALL_WEAPONS,
-    GRENADES,
-    EQUIPMENT_PRICES,
-    GameItemType,
-} from '../data/cs2Equipment';
+    ARMOR_ITEM_IDS, // Import nécessaire
+    EQUIPMENT_PRICES, // Import nécessaire
+    GameItemType, // Import nécessaire
+    ALL_WEAPONS, // Retiré car non utilisé directement
+} from '../data/cs2Equipment'; 
 
-// Interface pour le composant (simplifiée après l'intégration du Reducer)
+
 interface EquipmentPurchaseProps {
     player: Player;
-    playerRoundState: PlayerRoundState; // Nouveau nom de prop
+    playerRoundState: PlayerRoundState;
     onClose: () => void;
 }
 
 // Fonction utilitaire pour vérifier si un type d'item est déjà présent dans l'inventaire
+// Gardé ici, mais vous pouvez le supprimer si le Reducer gère toutes les règles.
 const hasItemOfType = (inventory: GameItem[], type: GameItemType, excludeId?: string) => {
     return inventory.some(item => item.type === type && (!excludeId || item.id !== excludeId));
 };
@@ -31,15 +31,11 @@ export function EquipmentPurchase({
     onClose,
 }: EquipmentPurchaseProps) {
     const { dispatch } = useMatchState();
-    const { money, inventory } = playerRoundState;
+    const { money, inventory, buyValue } = playerRoundState; // Ajout de buyValue
     const team = player.team;
 
-    // Items de base pour l'achat
     const buyableItems = getBuyableItemsForTeam(team);
     
-    // Simplification pour l'affichage des grenades (max 4, dont 1 flash, 1 utilitaire, 1 HE, 1 déco/molly)
-    // Notre logique de Reducer gère simplement l'ajout/suppression, sans les règles complexes de max par type.
-    // Nous conservons donc la règle de 'max 4 grenades' pour le UI.
     const maxGrenadesCount = 4; 
     const currentGrenadesCount = inventory.filter(item => item.type === 'Grenade').length;
     const isGrenadeFull = currentGrenadesCount >= maxGrenadesCount;
@@ -52,26 +48,28 @@ export function EquipmentPurchase({
             payload: {
                 playerId: player.id,
                 itemBoughtId: item.id,
+                // recipientId est requis par le type PurchaseInput, même si c'est vide pour l'instant.
+                // Le Reducer devrait gérer le fait qu'on achète pour soi-même.
+                recipientId: player.id, 
             },
         });
     };
 
     const handleResetBuy = () => {
-        // ACTION: Vider l'inventaire (sauf le pistolet de départ) et rembourser 50% de la Buy Value
-        // NOTE: Cette logique doit être ajoutée au Reducer sous une nouvelle action (e.g., 'RESET_BUY').
-        // Pour l'instant, nous faisons un simple console.log, car elle n'était pas dans matchReducer.ts.
-        console.warn(`ACTION REQUIRED: Implement 'RESET_BUY' in matchReducer.ts.`);
-        
-        // Simuler un achat de rien après avoir vidé l'inventaire pour forcer le recalcul
-        // C'est une simplification TEMPORAIRE. La vraie action doit être atomique (une seule action RESET_BUY)
-        // dispatch({ type: 'RESET_BUY', payload: { playerId: player.id } });
+        dispatch({ 
+            type: 'RESET_BUY', 
+            payload: { playerId: player.id } 
+        });
     };
     
     // --- GESTION DES ARMES ET ARMURES ---
     
     const renderArmorButtons = () => {
-        return ARMOR_ITEM_IDS.map(armorId => {
+        // Correction de 'armorId' implicitement 'any'
+        return ARMOR_ITEM_IDS.map((armorId: string) => { 
             const item = getItemById(armorId) as GameItem;
+            if (!item) return null;
+
             const isSelected = inventory.some(i => i.id === armorId);
             const canBuy = money >= item.price;
 
@@ -80,17 +78,19 @@ export function EquipmentPurchase({
             let buttonClass = '';
 
             if (isSelected) {
-                // Si sélectionné, l'action est de le vendre (Reset Buy partiel non géré par BUY_EQUIPMENT)
-                // Pour l'instant, on suppose qu'on annule tout pour cet item.
-                buttonAction = () => { /* Logique de Vente ou Reset partielle complexe */ console.log(`Sell/Reset ${item.name}`); };
+                // Pour l'armure, la re-sélection agit comme une vente/retrait simple.
+                buttonAction = () => { 
+                    dispatch({ 
+                        type: 'SELL_EQUIPMENT', 
+                        payload: { playerId: player.id, itemId: item.id } 
+                    });
+                };
                 buttonClass = 'border-gray-900 bg-gray-900 text-white';
             } else if (canBuy) {
-                // S'il peut l'acheter
                 buttonAction = () => handlePurchase(item);
                 buttonText += ` ($${item.price})`;
                 buttonClass = 'border-gray-300 hover:border-gray-400';
             } else {
-                // S'il n'a pas l'argent
                 buttonAction = () => {};
                 buttonText += ` (Need $${item.price})`;
                 buttonClass = 'border-gray-300 opacity-50 cursor-not-allowed';
@@ -109,12 +109,19 @@ export function EquipmentPurchase({
         });
     };
 
+    // La logique de sélection d'arme est simplifiée pour appeler handlePurchase ou SELL_EQUIPMENT
     const renderWeaponSelect = (type: GameItemType) => {
         const currentWeapon = inventory.find(item => item.type === type);
         const availableWeapons = buyableItems.filter(item => item.type === type);
         
-        // Option pour vendre l'arme actuelle (simplification)
-        const handleSellCurrent = () => { /* Logique de Vente ou Reset partielle complexe */ console.log(`Sell ${type}`); };
+        const handleSellCurrent = () => { 
+            if (currentWeapon) {
+                dispatch({ 
+                    type: 'SELL_EQUIPMENT', 
+                    payload: { playerId: player.id, itemId: currentWeapon.id } 
+                });
+            }
+        };
 
         return (
             <div className="flex flex-col gap-2">
@@ -131,13 +138,14 @@ export function EquipmentPurchase({
                     }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 >
-                    <option value="">{currentWeapon ? `Current: ${currentWeapon.name}` : 'None'}</option>
+                    <option value="">{currentWeapon ? `Current: ${currentWeapon.name} (Click to sell)` : 'None'}</option>
                     {availableWeapons.map((weapon) => {
                         const canAfford = money >= weapon.price;
                         return (
                             <option 
                                 key={weapon.id} 
                                 value={weapon.id}
+                                // L'option n'est désactivée que s'il s'agit d'une nouvelle arme (différente de l'actuelle) et qu'il n'a pas les fonds.
                                 disabled={!canAfford && weapon.id !== currentWeapon?.id}
                             >
                                 {weapon.name} (${weapon.price}) {canAfford ? '' : '(N/A)'}
@@ -158,14 +166,11 @@ export function EquipmentPurchase({
     const renderGrenadeButtons = () => {
         return buyableItems
             .filter(item => item.type === 'Grenade')
-            // Filtrer pour la Molotov/Incendiaire selon l'équipe
             .filter(item => team === 'CT' ? item.id !== 'molotov' : item.id !== 'incendiarygrenade')
             .map(item => {
                 const isSelected = inventory.some(i => i.id === item.id);
                 const canBuy = money >= item.price;
                 
-                // Règle simplifiée : Max 4 grenades au total. 
-                // Les règles par catégorie (max 1 flash, etc.) sont ignorées pour la simplification ici.
                 const isDisabled = !isSelected && (!canBuy || isGrenadeFull);
 
                 let buttonAction;
@@ -173,8 +178,12 @@ export function EquipmentPurchase({
                 let buttonClass = '';
 
                 if (isSelected) {
-                    // Si sélectionné, l'action est de le retirer (et de vendre)
-                    buttonAction = () => { /* Logique de vente de grenade */ console.log(`Sell/Remove ${item.name}`); };
+                    buttonAction = () => { 
+                        dispatch({ 
+                            type: 'SELL_EQUIPMENT', 
+                            payload: { playerId: player.id, itemId: item.id } 
+                        });
+                    };
                     buttonClass = 'border-gray-900 bg-gray-900 text-white';
                 } else {
                     buttonAction = () => handlePurchase(item);
@@ -208,7 +217,7 @@ export function EquipmentPurchase({
                             Achat d'Équipement pour {player.name || `${player.team} Player ${player.position}`}
                         </h2>
                         <p className="text-sm text-gray-600">
-                            Argent disponible: ${money.toLocaleString()} | Buy Value: ${playerRoundState.buyValue.toLocaleString()}
+                            Argent disponible: ${money.toLocaleString()} | Buy Value: ${buyValue.toLocaleString()}
                         </p>
                     </div>
                     <button
@@ -231,7 +240,7 @@ export function EquipmentPurchase({
                     
                     {/* ARMOR */}
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Armor</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Armure</h3>
                         <div className="flex gap-3">
                             {renderArmorButtons()}
                         </div>
@@ -239,20 +248,20 @@ export function EquipmentPurchase({
 
                     {/* PRIMARY WEAPON */}
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Primary Weapon</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Arme Principale</h3>
                         {renderWeaponSelect('Rifle')}
                     </div>
 
                     {/* SECONDARY WEAPON */}
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Secondary Weapon (Pistol)</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Arme Secondaire (Pistolet)</h3>
                         {renderWeaponSelect('Pistol')}
                     </div>
 
                     {/* GRENADES */}
                     <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                            Grenades (Max {maxGrenadesCount}, Current: {currentGrenadesCount})
+                            Grenades (Max {maxGrenadesCount}, Actuel: {currentGrenadesCount})
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
                             {renderGrenadeButtons()}
@@ -263,7 +272,6 @@ export function EquipmentPurchase({
                     {team === 'CT' && (
                         <div>
                             <h3 className="text-lg font-semibold text-gray-900 mb-3">Defuse Kit</h3>
-                            {/* NOTE: Le kit de désamorçage est un achat unique, non une sélection */}
                             <button
                                 onClick={() => handlePurchase(getItemById('defusekit') as GameItem)}
                                 disabled={inventory.some(i => i.id === 'defusekit') || money < EQUIPMENT_PRICES.defuseKit}
@@ -290,7 +298,6 @@ export function EquipmentPurchase({
                         </button>
                     </div>
 
-                    {/* Bouton de Fermeture Final */}
                     <div className="flex justify-end pt-4 border-t border-gray-200">
                         <button
                             onClick={onClose}

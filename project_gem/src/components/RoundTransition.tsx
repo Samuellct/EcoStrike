@@ -2,7 +2,7 @@
 
 import { X, CheckCircle, XCircle, DollarSign, HandHelping } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
-import { Player, RoundResult, Team, MatchState, KillEntry } from '../types';
+import { Player, RoundResult, Team, MatchState, KillEntry } from '../types/index';
 import { useMatchState } from '../state/MatchContext'; // Import du hook
 import { ALL_WEAPONS } from '../data/cs2Equipment';
 

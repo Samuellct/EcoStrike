@@ -12,7 +12,7 @@ import { RoundTransition } from './components/RoundTransition';
 import { ArrowRight } from 'lucide-react';
 import { useMatchState } from './state/MatchContext'; // Import du hook
 import { MatchConfig } from './components/MatchConfig'; // Nouveau composant de configuration
-import { Team } from './types'; // Import de Team pour la configuration initiale
+import { Team } from './types/index'; // Import de Team pour la configuration initiale
 
 // La fonction initializeMatch n'est plus nécessaire ici.
 
@@ -112,73 +112,3 @@ function App() {
 }
 
 export default App;
-
-
-// ------------------ NOUVEAU COMPOSANT À CRÉER ------------------
-// (Créer ce fichier src/components/MatchConfig.tsx)
-
-interface MatchConfigProps {
-  dispatch: React.Dispatch<MatchAction>;
-}
-
-// NOTE: Ce composant doit afficher le pop-up pour saisir le Mode de Match (Standard/Premier) 
-// et les choix de pistolet par défaut pour chaque joueur CT (USP-S/P2000) avant d'appeler 
-// dispatch({ type: 'SET_INITIAL_CONFIG', payload: { mode: ..., players: ... } }) 
-// puis dispatch({ type: 'START_MATCH' })
-const MatchConfig: React.FC<MatchConfigProps> = ({ dispatch }) => {
-    // ... Logique de formulaire et d'initialisation des 10 joueurs ...
-    
-    // Exemple d'initialisation des 10 joueurs pour la configuration :
-    const getInitialPlayers = (mode: MatchMode): Player[] => {
-        // ... (Logique pour créer les 10 joueurs avec ID/Team/Pistolet par défaut) ...
-        const players: Player[] = [];
-        // Création de 5 CTs
-        for (let i = 1; i <= 5; i++) {
-            players.push({
-                id: `CT-${i}`,
-                name: `CT Player ${i}`,
-                team: 'CT' as Team,
-                position: i,
-                defaultPistol: (i === 1 || i === 3 || i === 5) ? 'USP-S' : 'P2000', // Exemple de choix
-            });
-        }
-        // Création de 5 Ts
-        for (let i = 1; i <= 5; i++) {
-             players.push({
-                id: `T-${i}`,
-                name: `T Player ${i}`,
-                team: 'T' as Team,
-                position: i,
-                defaultPistol: 'GLOCK', // Fixé
-            });
-        }
-        return players;
-    };
-    
-    const handleStartMatch = (mode: MatchMode) => {
-        const configuredPlayers = getInitialPlayers(mode);
-        dispatch({ type: 'SET_INITIAL_CONFIG', payload: { mode, players: configuredPlayers } });
-        dispatch({ type: 'START_MATCH' });
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-6 text-center">Configuration EcoStrike.gg</h2>
-                {/* Formulaire de sélection du mode */}
-                <button 
-                    className="w-full bg-blue-600 text-white py-3 rounded mb-4 hover:bg-blue-700 transition"
-                    onClick={() => handleStartMatch('Premier')}
-                >
-                    Démarrer en Mode Premier (avec Prolongation)
-                </button>
-                 <button 
-                    className="w-full bg-orange-600 text-white py-3 rounded hover:bg-orange-700 transition"
-                    onClick={() => handleStartMatch('Standard')}
-                >
-                    Démarrer en Mode Compétitif Standard (Max 12-12)
-                </button>
-            </div>
-        </div>
-    );
-};

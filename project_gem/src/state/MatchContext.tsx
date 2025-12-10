@@ -1,4 +1,4 @@
-// src/state/MatchContext.tsx
+// src/state/MatchContext.tsx (CORRIGÉ ET COMPLET)
 
 import React, { 
     createContext, 
@@ -11,53 +11,55 @@ import {
     MatchState, 
     Player,
     TeamState,
-    PlayerRoundState
-} from '../types';
-import { initialMatchState, matchReducer, MatchAction } from './matchReducer';
+    PlayerRoundState,
+} from '../types/index';
+// Import correct de MatchAction et des utilitaires du reducer
+import { initialMatchState, matchReducer, MatchAction } from './matchReducer'; 
 
 // 1. Définition du Contexte
 interface MatchContextProps {
     state: MatchState;
-    dispatch: React.Dispatch<MatchAction>;
-    // Fonctions utilitaires si besoin, mais ici on expose surtout le dispatch.
+    // CORRECTION: Le dispatch est correctement typé avec l'action du reducer
+    dispatch: React.Dispatch<MatchAction>; 
 }
 
 // Initialisation du Contexte avec des valeurs par défaut pour TypeScript
+// Le typecast est important pour s'assurer que TypeScript reconnait le type non-null du dispatch
 const MatchContext = createContext<MatchContextProps>({
     state: initialMatchState,
-    dispatch: () => null,
+    dispatch: () => { throw new Error('dispatch function must be provided by MatchStateProvider'); }, // Meilleure erreur pour le débogage
 });
 
 // 2. Le Provider (Fournisseur d'État)
 export const MatchStateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    // Utilisation du reducer et de l'état initial
     const [state, dispatch] = useReducer(matchReducer, initialMatchState);
 
-    // [Optional] Logique pour le chronomètre ou les effets de phase pourrait aller ici
-    // Exemple : Déclencher le décompte de FreezeTime/RoundDuration
+    // [Optional] Logique de simulation de chronomètre (pour la démo)
     useEffect(() => {
+        let timer: NodeJS.Timeout | null = null;
+
         if (state.phase === 'FreezeTime' && state.currentRound > 0) {
             console.log(`Round ${state.currentRound}: FreezeTime (15s) started.`);
             
             // Simuler le passage à RoundDuration après 15s
-            const timer = setTimeout(() => {
+            timer = setTimeout(() => {
                 dispatch({ type: 'SET_PHASE', payload: 'RoundDuration' });
-            }, 15000); // 15 secondes
+            }, 15000); 
             
-            return () => clearTimeout(timer);
-        }
-        
-        if (state.phase === 'RoundDuration') {
+        } else if (state.phase === 'RoundDuration') {
             console.log(`Round ${state.currentRound}: Round Duration (1m55s) started.`);
             
             // Simuler la fin de manche après 1m55s
-            const timer = setTimeout(() => {
-                // La fin de manche doit afficher le bouton "Manche Suivante" en surbrillance.
-                // On met une phase temporaire pour l'interaction utilisateur.
+            timer = setTimeout(() => {
+                // Déclencher la phase de saisie utilisateur
                 dispatch({ type: 'SET_PHASE', payload: 'RoundEndSummary' }); 
-            }, 115000); // 1 minute 55 secondes
-            
-            return () => clearTimeout(timer);
+            }, 115000); 
         }
+        
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
     }, [state.phase, state.currentRound]);
 
 
@@ -72,7 +74,7 @@ export const MatchStateProvider: React.FC<{ children: ReactNode }> = ({ children
 export const useMatchState = () => {
     const context = useContext(MatchContext);
     if (context === undefined) {
-        throw new Error('useMatchState doit être utilisé à l\'intérieur de MatchStateProvider');
+        throw new Error('useMatchState must be used within a MatchStateProvider');
     }
     return context;
 };

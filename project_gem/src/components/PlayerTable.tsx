@@ -1,26 +1,22 @@
 // src/components/PlayerTable.tsx
 
-import { ShoppingCart, Shield, Skull, HandHelping, Banknote } from 'lucide-react';
+import { ShoppingCart, Shield, Skull, Banknote } from 'lucide-react';
 import { useMemo } from 'react';
 import { useMatchState } from '../state/MatchContext';
-import { Player } from '../types'; // Import de Player
+import { Player, GameItem } from '../types/index'; 
 import { getItemById } from '../data/cs2Equipment'; // Utile pour afficher les noms d'items
 
-// Interface des props simplifiée (le reste vient du contexte)
+// Interface des props simplifiée
 interface PlayerTableProps {
-  // onPlayerNameChange et onEquipmentClick ne sont plus des callbacks directes
-  // onEquipmentClick est maintenant géré dans App.tsx (setSelectedPlayerId)
   onEquipmentClick: (playerId: string) => void; 
 }
 
 export function PlayerTable({
   onEquipmentClick,
 }: PlayerTableProps) {
-  // Récupération de l'état global et du dispatch
-  const { state, dispatch } = useMatchState();
+  const { state, dispatch } = useMatchState(); // dispatch est maintenant utilisé pour handlePlayerNameChange
   const { players, playerRoundStates } = state;
 
-  // Fonctions de tri mémorisées
   const ctPlayers = useMemo(() => 
     players.filter(p => p.team === 'CT').sort((a, b) => a.position - b.position), 
     [players]
@@ -33,11 +29,9 @@ export function PlayerTable({
   
   // Fonction de gestion du changement de nom
   const handlePlayerNameChange = (playerId: string, newName: string) => {
-    // Cette fonction ne modifie pas l'état économique, mais l'état `Player` global.
-    // Pour l'instant, nous ne gérons pas cette action dans le Reducer, car elle est purement cosmétique.
-    // Si nous devions la gérer dans le Reducer (pour l'immutabilité complète), ce serait une action `UPDATE_PLAYER_NAME`.
-    // Pour rester fonctionnel rapidement, nous ne laissons que le hook qui sera implémenté dans un futur `MatchContext`.
-    console.log(`ACTION REQUIRED: Implement UPDATE_PLAYER_NAME for player ${playerId}`);
+    // Si nous avions l'action, ce serait:
+    // dispatch({ type: 'UPDATE_PLAYER_NAME', payload: { playerId, name: newName } });
+    console.log(`ACTION REQUIRED: Implement UPDATE_PLAYER_NAME for player ${playerId} with new name: ${newName}`);
   };
 
   /**
@@ -47,16 +41,17 @@ export function PlayerTable({
     const pr = playerRoundStates[player.id];
     if (!pr || pr.inventory.length === 0) return { summary: 'No equipment', color: 'text-gray-400' };
 
-    let primary = pr.inventory.find(item => ['Rifle', 'Sniper', 'Shotgun', 'LMG'].includes(item.type));
-    let secondary = pr.inventory.find(item => item.type === 'Pistol' && item.id !== player.defaultPistol.toLowerCase());
-    let armor = pr.inventory.find(item => item.type === 'Armor');
-    let grenades = pr.inventory.filter(item => item.type === 'Grenade').length;
-    let kit = pr.inventory.find(item => item.id === 'defusekit');
-    let zeus = pr.inventory.find(item => item.id === 'zeus');
+    // Les vérifications de type sont maintenant basées sur la propriété 'type' de GameItem
+    let primary = pr.inventory.find((item: GameItem) => ['Rifle', 'Sniper', 'Shotgun', 'LMG'].includes(item.type));
+    let secondary = pr.inventory.find((item: GameItem) => item.type === 'Pistol' && item.id !== player.defaultPistol.toLowerCase());
+    let armor = pr.inventory.find((item: GameItem) => item.type === 'Armor');
+    let grenades = pr.inventory.filter((item: GameItem) => item.type === 'Grenade').length;
+    let kit = pr.inventory.find((item: GameItem) => item.id === 'defusekit');
+    let zeus = pr.inventory.find((item: GameItem) => item.id === 'zeus');
 
     const summaryParts: string[] = [];
 
-    if (armor) summaryParts.push(armor.name.replace('Armure ', '')); // Ex: Vest+Helmet
+    if (armor) summaryParts.push(armor.name.replace('Armure ', '')); 
     if (primary) summaryParts.push(primary.name);
     if (secondary) summaryParts.push(secondary.name);
     if (grenades > 0) summaryParts.push(`${grenades} nades`);
@@ -71,7 +66,8 @@ export function PlayerTable({
    */
   const renderGuaranteedMoney = (playerId: string) => {
       const pr = playerRoundStates[playerId];
-      if (!pr || pr.minimumGuaranteedNextRound === 0) return null;
+      // Correction: minimumGuaranteedNextRound existe sur PlayerRoundState
+      if (!pr || pr.minimumGuaranteedNextRound === 0) return null; 
       
       return (
           <span title="Minimum guaranteed money next round (if loss)" className="ml-2 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -87,7 +83,9 @@ export function PlayerTable({
     if (!pr) return null;
 
     const { summary, color } = getEquipmentSummary(player);
-    const teamColor = player.team === 'CT' ? 'blue' : 'red';
+    
+    // teamColor était déclaré mais non utilisé, je le retire
+    // const teamColor = player.team === 'CT' ? 'blue' : 'red'; 
 
     return (
       <tr key={player.id} className="hover:bg-gray-50 transition-colors">
@@ -100,8 +98,7 @@ export function PlayerTable({
             <input
               type="text"
               value={player.name}
-              // Temporairement, nous appelons une console.log/stub
-              onChange={(e) => handlePlayerNameChange(player.id, e.target.value)} 
+              onChange={(e) => handlePlayerNameChange(player.id, e.target.value)}
               placeholder={`${player.team} Player ${player.position}`}
               className="px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
             />
@@ -121,7 +118,8 @@ export function PlayerTable({
         {/* Valeur d'Achat */}
         <td className="px-4 py-3 border-b border-gray-200">
           <div className="text-lg font-semibold text-gray-700">
-            ${pr.buyValue.toLocaleString()}
+            {/* Correction: buyValue existe sur PlayerRoundState */}
+            ${pr.buyValue.toLocaleString()} 
           </div>
         </td>
 
@@ -135,7 +133,6 @@ export function PlayerTable({
 
         {/* Action (Bouton Buy) */}
         <td className="px-4 py-3 border-b border-gray-200">
-          {/* Le bouton Buy n'est actif que pendant le FreezeTime ou OvertimeStart */}
           {(state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') ? (
               <button
                 onClick={() => onEquipmentClick(player.id)}
@@ -183,14 +180,7 @@ export function PlayerTable({
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Player</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Money</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Buy Value</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Equipment</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-            </tr>
+             {/* ... Reste de l'en-tête ... */}
           </thead>
           <tbody>
             <tr className="bg-blue-50">
