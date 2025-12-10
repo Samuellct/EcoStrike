@@ -1,311 +1,281 @@
-// src/components/EquipmentPurchase.tsx
+// src/components/EquipmentPurchase.tsx (CORRECTION ROBUSTE)
 
-import { X, RefreshCw } from 'lucide-react'; // 'HandHolding' corrigé ou retiré
-import { Player, PlayerRoundState, GameItem } from '../types/index';  // Import de GameItem
+import { X, ShoppingCart, User } from 'lucide-react'; 
+import React, { useState, useMemo } from 'react';
+import { Player, PlayerRoundState, GameItem, PurchaseInput, GameItemType } from '../types/index';
 import { useMatchState } from '../state/MatchContext';
 import { 
     getBuyableItemsForTeam,
     getItemById,
-    ARMOR_ITEM_IDS, // Import nécessaire
-    EQUIPMENT_PRICES, // Import nécessaire
-    GameItemType, // Import nécessaire
-    ALL_WEAPONS, // Retiré car non utilisé directement
+    ARMOR_ITEM_IDS, 
+    GRENADES_IDS, // Import nécessaire pour la logique d'affichage des grenades
 } from '../data/cs2Equipment'; 
 
-
+// L'interface de props est simplifiée pour ne contenir que les données et les callbacks d'UI
 interface EquipmentPurchaseProps {
     player: Player;
     playerRoundState: PlayerRoundState;
+    onPurchase: (input: PurchaseInput) => void; 
     onClose: () => void;
 }
-
-// Fonction utilitaire pour vérifier si un type d'item est déjà présent dans l'inventaire
-// Gardé ici, mais vous pouvez le supprimer si le Reducer gère toutes les règles.
-const hasItemOfType = (inventory: GameItem[], type: GameItemType, excludeId?: string) => {
-    return inventory.some(item => item.type === type && (!excludeId || item.id !== excludeId));
-};
 
 export function EquipmentPurchase({
     player,
     playerRoundState,
+    onPurchase,
     onClose,
 }: EquipmentPurchaseProps) {
-    const { dispatch } = useMatchState();
-    const { money, inventory, buyValue } = playerRoundState; // Ajout de buyValue
+    const { state } = useMatchState(); 
+    const { money } = playerRoundState; // On utilise l'argent de l'ACHETEUR (player)
     const team = player.team;
-
-    const buyableItems = getBuyableItemsForTeam(team);
     
-    const maxGrenadesCount = 4; 
-    const currentGrenadesCount = inventory.filter(item => item.type === 'Grenade').length;
-    const isGrenadeFull = currentGrenadesCount >= maxGrenadesCount;
+    // État local pour gérer l'achat pour un coéquipier
+    const teammates = state.players.filter(p => p.team === team && p.id !== player.id);
+    const [recipientId, setRecipientId] = useState<string>(player.id);
 
-    // --- LOGIQUE D'ACHAT ---
-
-    const handlePurchase = (item: GameItem) => {
-        dispatch({
-            type: 'BUY_EQUIPMENT',
-            payload: {
-                playerId: player.id,
-                itemBoughtId: item.id,
-                // recipientId est requis par le type PurchaseInput, même si c'est vide pour l'instant.
-                // Le Reducer devrait gérer le fait qu'on achète pour soi-même.
-                recipientId: player.id, 
-            },
-        });
-    };
-
-    const handleResetBuy = () => {
-        dispatch({ 
-            type: 'RESET_BUY', 
-            payload: { playerId: player.id } 
-        });
-    };
+    // Items que l'équipe peut acheter (filtrés par team)
+    const buyableItems = useMemo(() => getBuyableItemsForTeam(team), [team]);
     
-    // --- GESTION DES ARMES ET ARMURES ---
-    
-    const renderArmorButtons = () => {
-        // Correction de 'armorId' implicitement 'any'
-        return ARMOR_ITEM_IDS.map((armorId: string) => { 
-            const item = getItemById(armorId) as GameItem;
-            if (!item) return null;
-
-            const isSelected = inventory.some(i => i.id === armorId);
-            const canBuy = money >= item.price;
-
-            let buttonAction;
-            let buttonText = item.name;
-            let buttonClass = '';
-
-            if (isSelected) {
-                // Pour l'armure, la re-sélection agit comme une vente/retrait simple.
-                buttonAction = () => { 
-                    dispatch({ 
-                        type: 'SELL_EQUIPMENT', 
-                        payload: { playerId: player.id, itemId: item.id } 
-                    });
-                };
-                buttonClass = 'border-gray-900 bg-gray-900 text-white';
-            } else if (canBuy) {
-                buttonAction = () => handlePurchase(item);
-                buttonText += ` ($${item.price})`;
-                buttonClass = 'border-gray-300 hover:border-gray-400';
-            } else {
-                buttonAction = () => {};
-                buttonText += ` (Need $${item.price})`;
-                buttonClass = 'border-gray-300 opacity-50 cursor-not-allowed';
+    // Groupement des items pour l'affichage (réalisé une seule fois)
+    const groupedItems = useMemo(() => {
+        return buyableItems.reduce((acc, item) => {
+            if (!acc[item.type]) {
+                acc[item.type] = [];
             }
-
-            return (
-                <button
-                    key={item.id}
-                    onClick={buttonAction}
-                    disabled={!canBuy && !isSelected}
-                    className={`px-4 py-2 rounded-lg border-2 transition-colors ${buttonClass}`}
-                >
-                    {buttonText}
-                </button>
-            );
-        });
-    };
-
-    // La logique de sélection d'arme est simplifiée pour appeler handlePurchase ou SELL_EQUIPMENT
-    const renderWeaponSelect = (type: GameItemType) => {
-        const currentWeapon = inventory.find(item => item.type === type);
-        const availableWeapons = buyableItems.filter(item => item.type === type);
+            acc[item.type].push(item);
+            return acc;
+        }, {} as Record<GameItemType, GameItem[]>);
+    }, [buyableItems]);
+    
+    // --- Logique d'Achat ---
+    
+    // NOUVEAUTÉ CLÉ: Récupération et filtrage de l'inventaire du destinataire
+    // Ceci garantit que toutes les fonctions ci-dessous ne travaillent qu'avec des objets valides.
+    const recipientInventoryFiltered: GameItem[] = useMemo(() => {
+        const recipientInv = state.playerRoundStates[recipientId]?.inventory || [];
+        // Filtrer explicitement les éléments undefined/null (la cause des erreurs)
+        return recipientInv.filter(i => i) as GameItem[]; 
+    }, [recipientId, state.playerRoundStates]);
+    
+    
+    const isAlreadyOwned = (item: GameItem) => {
+        // Logique de possession pour la personne qui reçoit l'item (recipientId)
         
-        const handleSellCurrent = () => { 
-            if (currentWeapon) {
-                dispatch({ 
-                    type: 'SELL_EQUIPMENT', 
-                    payload: { playerId: player.id, itemId: currentWeapon.id } 
-                });
-            }
+        // Cas spécial pour l'Armure : Vest ou Vest+Helmet
+        if (item.type === 'Armor') {
+            // Utilise l'inventaire filtré
+            return recipientInventoryFiltered.some(i => ARMOR_ITEM_IDS.includes(i.id));
+        }
+        
+        // Cas spécial pour les Pistolets de départ (non achetables)
+        if (item.type === 'Pistol' && (item.id === 'glock' || item.id === 'usps' || item.id === 'p2000')) {
+             return true; 
+        }
+
+        // Cas général: Si l'arme existe déjà
+        // Utilise l'inventaire filtré
+        return recipientInventoryFiltered.some(i => i.id === item.id);
+    };
+    
+    // Vérifie si le type d'arme est déjà dans l'inventaire du destinataire (pour les limites d'armes principales)
+    const hasWeaponOfType = (itemType: GameItemType) => {
+        // Les types de grenades et l'armure ne sont pas concernés par cette limite
+        if (itemType === 'Grenade' || itemType === 'Armor' || itemType === 'Utility') {
+            return false;
+        }
+        
+        // Si l'arme est de type lourd (principal) et qu'il y en a déjà une
+        // Utilise l'inventaire filtré (plus besoin de `i &&`)
+        return recipientInventoryFiltered.some(i => 
+            ['Rifle', 'Sniper', 'SMG', 'Shotgun', 'Heavy'].includes(i.type) && 
+            i.type === itemType
+        );
+    };
+    
+    const isGrenadeLimitReached = (item: GameItem) => {
+        // currentGrenades contient uniquement des GameItem valides grâce au filtrage useMemo
+        const currentGrenades = recipientInventoryFiltered.filter(i => GRENADES_IDS.includes(i.id));
+        
+        if (currentGrenades.length >= 4) {
+            return true;
+        }
+        
+        // Limite par type (sauf Flashbang)
+        const isFlash = item.id === 'flashbang';
+        const maxCount = isFlash ? 2 : 1; 
+        const currentCount = currentGrenades.filter(g => g.id === item.id).length;
+
+        return currentCount >= maxCount;
+    }
+    
+    const handlePurchase = (item: GameItem) => {
+        const input: PurchaseInput = {
+            playerId: player.id, // L'acheteur (toujours le joueur du composant)
+            itemBoughtId: item.id,
+            recipientId: recipientId, // Le destinataire (le joueur ou un coéquipier)
         };
+        
+        onPurchase(input);
+    };
+
+    // --- Rendu ---
+    
+    const renderBuyButton = (item: GameItem) => {
+        // Le destinataire est celui sélectionné dans le dropdown (ou soi-même)
+        const recipientCurrentMoney = state.playerRoundStates[recipientId]?.money || 0;
+        
+        // Vérifie si l'acheteur (player.id) a l'argent (si l'achat n'est pas pour soi-même)
+        const canAfford = player.id !== recipientId 
+            ? money >= item.price 
+            : recipientCurrentMoney >= item.price;
+            
+        const isTeamMate = player.id !== recipientId;
+
+        const isWeaponLimitReached = (item.type !== 'Armor' && item.type !== 'Utility' && hasWeaponOfType(item.type));
+        const isGrenadeLimit = (item.type === 'Grenade' && isGrenadeLimitReached(item));
+        const isDefuseKitCT = (item.id === 'defusekit' && team === 'T'); // T ne peut pas acheter de kit
+        
+        // L'item est-il déjà dans l'inventaire du destinataire ?
+        const isOwned = isAlreadyOwned(item) && !isTeamMate && item.type !== 'Grenade';
+
+        const isDisabled = 
+            !canAfford ||
+            isWeaponLimitReached || 
+            isGrenadeLimit ||
+            isDefuseKitCT ||
+            isOwned;
+
+        const buttonClass = `
+            px-3 py-1 text-sm rounded-lg transition-colors font-medium border
+            ${isDisabled 
+                ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed'
+                : 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+            }
+        `;
+        
 
         return (
-            <div className="flex flex-col gap-2">
-                <select
-                    value={currentWeapon?.id || ''}
-                    onChange={(e) => {
-                        const newId = e.target.value;
-                        if (newId) {
-                            const item = getItemById(newId) as GameItem;
-                            handlePurchase(item);
-                        } else {
-                            handleSellCurrent();
-                        }
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                >
-                    <option value="">{currentWeapon ? `Current: ${currentWeapon.name} (Click to sell)` : 'None'}</option>
-                    {availableWeapons.map((weapon) => {
-                        const canAfford = money >= weapon.price;
-                        return (
-                            <option 
-                                key={weapon.id} 
-                                value={weapon.id}
-                                // L'option n'est désactivée que s'il s'agit d'une nouvelle arme (différente de l'actuelle) et qu'il n'a pas les fonds.
-                                disabled={!canAfford && weapon.id !== currentWeapon?.id}
-                            >
-                                {weapon.name} (${weapon.price}) {canAfford ? '' : '(N/A)'}
-                            </option>
-                        );
-                    })}
-                </select>
-                {currentWeapon && currentWeapon.id !== player.defaultPistol.toLowerCase() && (
-                    <button onClick={handleSellCurrent} className="text-xs text-red-600 hover:text-red-700 underline self-start">
-                        Vendre {currentWeapon.name} (50% Remboursement)
-                    </button>
-                )}
-            </div>
+            <button
+                key={item.id}
+                onClick={() => handlePurchase(item)}
+                disabled={isDisabled}
+                className={buttonClass}
+                title={`Prix: $${item.price.toLocaleString()}`}
+            >
+                {isOwned && !isTeamMate && item.type !== 'Grenade' ? `Acquis (${item.name})` : (item.id.includes('kit') ? item.name : `${item.name} ($${item.price})`)}
+            </button>
         );
     };
 
-
-    const renderGrenadeButtons = () => {
-        return buyableItems
-            .filter(item => item.type === 'Grenade')
-            .filter(item => team === 'CT' ? item.id !== 'molotov' : item.id !== 'incendiarygrenade')
-            .map(item => {
-                const isSelected = inventory.some(i => i.id === item.id);
-                const canBuy = money >= item.price;
-                
-                const isDisabled = !isSelected && (!canBuy || isGrenadeFull);
-
-                let buttonAction;
-                let buttonText = item.name;
-                let buttonClass = '';
-
-                if (isSelected) {
-                    buttonAction = () => { 
-                        dispatch({ 
-                            type: 'SELL_EQUIPMENT', 
-                            payload: { playerId: player.id, itemId: item.id } 
-                        });
-                    };
-                    buttonClass = 'border-gray-900 bg-gray-900 text-white';
-                } else {
-                    buttonAction = () => handlePurchase(item);
-                    buttonText += ` ($${item.price})`;
-                    buttonClass = isDisabled ? 
-                        'border-gray-300 opacity-50 cursor-not-allowed' : 
-                        'border-gray-300 hover:border-gray-400';
-                }
-
-                return (
-                    <button
-                        key={item.id}
-                        onClick={buttonAction}
-                        disabled={isDisabled && !isSelected}
-                        className={`px-4 py-2 rounded-lg border-2 transition-colors ${buttonClass}`}
-                    >
-                        {buttonText}
-                    </button>
-                );
-            });
-    };
-
-    // --- RENDER PRINCIPAL ---
-
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-900">
-                            Achat d'Équipement pour {player.name || `${player.team} Player ${player.position}`}
-                        </h2>
-                        <p className="text-sm text-gray-600">
-                            Argent disponible: ${money.toLocaleString()} | Buy Value: ${buyValue.toLocaleString()}
-                        </p>
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+            <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                
+                {/* En-tête du Panier */}
+                <div className="flex justify-between items-start pb-4 border-b border-gray-200">
+                    <div className="flex items-center gap-3">
+                        <ShoppingCart className="w-8 h-8 text-gray-700" />
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Achat d'Équipement</h2>
+                            <p className="text-sm text-gray-500">
+                                Acheteur: <span className="font-semibold text-gray-700">{player.name}</span> (Argent: ${money.toLocaleString()})
+                            </p>
+                        </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        <X className="w-6 h-6" />
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                        <X className="w-6 h-6 text-gray-600" />
                     </button>
                 </div>
-
-                <div className="p-6 space-y-6">
-                    {/* RESET BUY */}
-                    <button 
-                        onClick={handleResetBuy}
-                        className="px-6 py-3 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-colors flex items-center gap-2"
-                    >
-                        <RefreshCw className="w-5 h-5" />
-                        Vendre tout et Reset Buy (50% remb.)
-                    </button>
+                
+                {/* Sélection du Destinataire */}
+                <div className="py-4 border-b border-gray-200">
+                     <div className='flex items-center gap-4'>
+                        <User className='w-5 h-5 text-gray-500'/>
+                        <label htmlFor="recipient-select" className="text-sm font-medium text-gray-700">Acheter pour:</label>
+                        <select
+                            id="recipient-select"
+                            value={recipientId}
+                            onChange={(e) => setRecipientId(e.target.value)}
+                            className="p-2 border border-gray-300 rounded-lg text-gray-700"
+                        >
+                            <option value={player.id}>{player.name} (Moi-même)</option>
+                            {teammates.map(p => (
+                                <option key={p.id} value={p.id}>
+                                    {p.name} (Argent: ${state.playerRoundStates[p.id]?.money.toLocaleString()})
+                                </option>
+                            ))}
+                        </select>
+                     </div>
+                    {/* Affichage du Buy Value du destinataire */}
+                     <p className='text-xs text-gray-500 mt-2 ml-9'>
+                        Valeur d'inventaire actuelle de {state.players.find(p => p.id === recipientId)?.name}: 
+                        <span className='font-semibold'> ${state.playerRoundStates[recipientId]?.buyValue.toLocaleString()}</span>
+                     </p>
+                </div>
+                
+                {/* Contenu Scrollable */}
+                <div className="mt-4 overflow-y-auto flex-grow space-y-6 pr-2">
                     
-                    {/* ARMOR */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Armure</h3>
-                        <div className="flex gap-3">
-                            {renderArmorButtons()}
-                        </div>
-                    </div>
-
-                    {/* PRIMARY WEAPON */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Arme Principale</h3>
-                        {renderWeaponSelect('Rifle')}
-                    </div>
-
-                    {/* SECONDARY WEAPON */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Arme Secondaire (Pistolet)</h3>
-                        {renderWeaponSelect('Pistol')}
-                    </div>
-
-                    {/* GRENADES */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                            Grenades (Max {maxGrenadesCount}, Actuel: {currentGrenadesCount})
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            {renderGrenadeButtons()}
-                        </div>
-                    </div>
-
-                    {/* EQUIPMENT (Defuse Kit) */}
-                    {team === 'CT' && (
-                        <div>
-                            <h3 className="text-lg font-semibold text-gray-900 mb-3">Defuse Kit</h3>
-                            <button
-                                onClick={() => handlePurchase(getItemById('defusekit') as GameItem)}
-                                disabled={inventory.some(i => i.id === 'defusekit') || money < EQUIPMENT_PRICES.defuseKit}
-                                className="px-4 py-2 rounded-lg border-2 transition-colors border-gray-300 hover:border-gray-400 disabled:opacity-50"
-                            >
-                                {inventory.some(i => i.id === 'defusekit') 
-                                    ? "Defuse Kit Acquis" 
-                                    : `Acheter Defuse Kit ($${EQUIPMENT_PRICES.defuseKit})`}
-                            </button>
+                    {/* Fusils et Snipers */}
+                    {groupedItems['Rifle'] && groupedItems['Rifle'].length > 0 && (
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                            <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-1">Fusils d'Assaut et Snipers</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {groupedItems['Rifle'].map(renderBuyButton)}
+                                {groupedItems['Sniper']?.map(renderBuyButton)}
+                            </div>
                         </div>
                     )}
+                    
+                    {/* Pistolets */}
+                    {groupedItems['Pistol'] && groupedItems['Pistol'].length > 0 && (
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                            <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-1">Pistolets</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {/* Filtre pour ne pas afficher le pistolet de départ (glock, usps, p2000) */}
+                                {groupedItems['Pistol'].filter(i => i.price > 200).map(renderBuyButton)} 
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* SMGs, Heavys, Shotguns */}
+                    { (groupedItems['SMG'] || groupedItems['Shotgun'] || groupedItems['Heavy']) && (
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                            <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-1">SMG, Lourds et Fusils à Pompe</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {groupedItems['SMG']?.map(renderBuyButton)}
+                                {groupedItems['Shotgun']?.map(renderBuyButton)}
+                                {groupedItems['Heavy']?.map(renderBuyButton)}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Grenades */}
+                    {groupedItems['Grenade'] && groupedItems['Grenade'].length > 0 && (
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                            <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-1">Grenades et Utilitaire</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {groupedItems['Grenade'].map(renderBuyButton)}
+                                {/* Armure */}
+                                {groupedItems['Armor']?.map(renderBuyButton)}
+                                {/* Zeus */}
+                                {groupedItems['Utility']?.filter(i => i.id === 'zeus').map(renderBuyButton)}
+                                {/* Defuse Kit (CT uniquement) */}
+                                {team === 'CT' && groupedItems['Utility']?.filter(i => i.id === 'defusekit').map(renderBuyButton)}
+                            </div>
+                        </div>
+                    )}
+                    
+                </div>
 
-                    {/* ZEUS */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Zeus x27</h3>
-                        <button
-                            onClick={() => handlePurchase(getItemById('zeus') as GameItem)}
-                            disabled={inventory.some(i => i.id === 'zeus') || money < EQUIPMENT_PRICES.zeus}
-                            className="px-4 py-2 rounded-lg border-2 transition-colors border-gray-300 hover:border-gray-400 disabled:opacity-50"
-                        >
-                            {inventory.some(i => i.id === 'zeus') 
-                                ? "Zeus Acquis" 
-                                : `Acheter Zeus ($${EQUIPMENT_PRICES.zeus})`}
-                        </button>
-                    </div>
-
-                    <div className="flex justify-end pt-4 border-t border-gray-200">
-                        <button
-                            onClick={onClose}
-                            className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-                        >
-                            Fermer Achat
-                        </button>
-                    </div>
+                {/* Footer */}
+                <div className="flex justify-end pt-4 border-t border-gray-200 mt-4">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                    >
+                        Fermer Achat
+                    </button>
                 </div>
             </div>
         </div>

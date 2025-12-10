@@ -1,22 +1,23 @@
-// src/components/PlayerTable.tsx
+// src/components/PlayerTable.tsx (CORRIGÉ ET COMPLET)
 
-import { ShoppingCart, Shield, Skull, Banknote } from 'lucide-react';
-import { useMemo } from 'react';
+import { ShoppingCart, Shield, Skull, Banknote, Edit, Swords } from 'lucide-react'; 
+import React, { useMemo } from 'react';
 import { useMatchState } from '../state/MatchContext';
-import { Player, GameItem } from '../types/index'; 
-import { getItemById } from '../data/cs2Equipment'; // Utile pour afficher les noms d'items
+import { Player, GameItem, PlayerRoundState, KillEntry } from '../types/index'; 
+import { getItemById } from '../data/cs2Equipment';
 
-// Interface des props simplifiée
-interface PlayerTableProps {
-  onEquipmentClick: (playerId: string) => void; 
+interface InternalPlayerTableProps {
+    onEquipmentClick: (playerId: string) => void;
+    onPlayerNameChange: (playerId: string, name: string) => void;
 }
 
 export function PlayerTable({
   onEquipmentClick,
-}: PlayerTableProps) {
-  const { state, dispatch } = useMatchState(); // dispatch est maintenant utilisé pour handlePlayerNameChange
+}: InternalPlayerTableProps) {
+  const { state } = useMatchState(); 
   const { players, playerRoundStates } = state;
 
+  // Séparer les joueurs et trier
   const ctPlayers = useMemo(() => 
     players.filter(p => p.team === 'CT').sort((a, b) => a.position - b.position), 
     [players]
@@ -27,137 +28,108 @@ export function PlayerTable({
     [players]
   );
   
-  // Fonction de gestion du changement de nom
-  const handlePlayerNameChange = (playerId: string, newName: string) => {
-    // Si nous avions l'action, ce serait:
-    // dispatch({ type: 'UPDATE_PLAYER_NAME', payload: { playerId, name: newName } });
-    console.log(`ACTION REQUIRED: Implement UPDATE_PLAYER_NAME for player ${playerId} with new name: ${newName}`);
-  };
-
-  /**
-   * Extrait et formate l'équipement d'un joueur à partir de son inventaire GameItem[].
-   */
-  const getEquipmentSummary = (player: Player) => {
-    const pr = playerRoundStates[player.id];
-    if (!pr || pr.inventory.length === 0) return { summary: 'No equipment', color: 'text-gray-400' };
-
-    // Les vérifications de type sont maintenant basées sur la propriété 'type' de GameItem
-    let primary = pr.inventory.find((item: GameItem) => ['Rifle', 'Sniper', 'Shotgun', 'LMG'].includes(item.type));
-    let secondary = pr.inventory.find((item: GameItem) => item.type === 'Pistol' && item.id !== player.defaultPistol.toLowerCase());
-    let armor = pr.inventory.find((item: GameItem) => item.type === 'Armor');
-    let grenades = pr.inventory.filter((item: GameItem) => item.type === 'Grenade').length;
-    let kit = pr.inventory.find((item: GameItem) => item.id === 'defusekit');
-    let zeus = pr.inventory.find((item: GameItem) => item.id === 'zeus');
-
-    const summaryParts: string[] = [];
-
-    if (armor) summaryParts.push(armor.name.replace('Armure ', '')); 
-    if (primary) summaryParts.push(primary.name);
-    if (secondary) summaryParts.push(secondary.name);
-    if (grenades > 0) summaryParts.push(`${grenades} nades`);
-    if (kit) summaryParts.push('Kit');
-    if (zeus) summaryParts.push('Zeus');
-
-    return { summary: summaryParts.join(', '), color: 'text-gray-600' };
-  };
-  
-  /**
-   * Affiche l'argent minimum garanti.
-   */
-  const renderGuaranteedMoney = (playerId: string) => {
-      const pr = playerRoundStates[playerId];
-      // Correction: minimumGuaranteedNextRound existe sur PlayerRoundState
-      if (!pr || pr.minimumGuaranteedNextRound === 0) return null; 
-      
+  // Fonction utilitaire pour l'affichage des Kills
+  const renderKills = (kills: KillEntry[]) => {
+      const totalKills = kills.reduce((sum, entry) => sum + entry.count, 0);
       return (
-          <span title="Minimum guaranteed money next round (if loss)" className="ml-2 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Banknote className="w-3 h-3" />
-              ${pr.minimumGuaranteedNextRound.toLocaleString()}
-          </span>
+          <div className='flex items-center gap-1'>
+              <Swords className='w-4 h-4 text-gray-500' />
+              {totalKills}
+          </div>
       );
   };
   
+  // Fonction utilitaire pour l'affichage de l'inventaire avec vérification 'i &&' avant d'accéder à 'i.type'
+  const renderInventory = (inventory: GameItem[]) => {
+    const primary = inventory.find(i => i && ['Rifle', 'Sniper', 'SMG', 'Shotgun', 'Heavy'].includes(i.type));
+    const secondary = inventory.find(i => i && i.type === 'Pistol');
+    const armor = inventory.find(i => i && i.type === 'Armor');
+    const utility = inventory.filter(i => i && (i.type === 'Grenade' || i.id === 'defusekit' || i.id === 'zeus'));
 
+    const elements: JSX.Element[] = [];
+
+    if (primary) {
+        elements.push(
+            <span key="primary" className="text-xs px-2 py-0.5 bg-gray-200 rounded-full truncate">
+                {primary.name}
+            </span>
+        );
+    }
+    if (secondary && secondary.id !== 'glock' && secondary.id !== 'usps' && secondary.id !== 'p2000') {
+        elements.push(
+            <span key="secondary" className="text-xs px-2 py-0.5 bg-gray-200 rounded-full truncate">
+                {secondary.name}
+            </span>
+        );
+    }
+    if (armor) {
+        elements.push(
+            <span key="armor" className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                <Shield className='w-3 h-3 inline-block mr-1'/> {armor.name}
+            </span>
+        );
+    }
+    if (utility.length > 0) {
+        elements.push(
+            <span key="utility" className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full">
+                {utility.length} Utilités
+            </span>
+        );
+    }
+    
+    return (
+        <div className="flex flex-wrap gap-1">
+            {elements.length > 0 ? elements : <span className='text-xs text-gray-400'>Inventaire vide</span>}
+        </div>
+    );
+  };
+  
+  // Rendu de chaque ligne de joueur
   const renderPlayerRow = (player: Player) => {
     const pr = playerRoundStates[player.id];
-    if (!pr) return null;
+    if (!pr) return null; // Ne pas afficher si l'état rond n'est pas trouvé
 
-    const { summary, color } = getEquipmentSummary(player);
-    
-    // teamColor était déclaré mais non utilisé, je le retire
-    // const teamColor = player.team === 'CT' ? 'blue' : 'red'; 
+    // Le nom du pistolet par défaut pour l'affichage
+    const defaultPistolName = getItemById(player.defaultPistol.toLowerCase())?.name || player.defaultPistol;
 
     return (
       <tr key={player.id} className="hover:bg-gray-50 transition-colors">
+        
         {/* Nom du Joueur */}
-        <td className="px-4 py-3 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-bold ${player.team === 'CT' ? 'text-blue-600' : 'text-red-600'}`}>
-              {player.team}
+        <td className="px-4 py-3 border-b border-gray-200 w-1/4">
+          <div className="flex items-center gap-3">
+            <span className={`font-semibold text-lg ${player.team === 'CT' ? 'text-blue-700' : 'text-red-700'}`}>
+              {player.name}
             </span>
-            <input
-              type="text"
-              value={player.name}
-              onChange={(e) => handlePlayerNameChange(player.id, e.target.value)}
-              placeholder={`${player.team} Player ${player.position}`}
-              className="px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
-            />
           </div>
         </td>
-
-        {/* Argent Actuel */}
-        <td className="px-4 py-3 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className={`text-lg font-bold ${pr.money < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-              ${pr.money.toLocaleString()}
-            </div>
-             {renderGuaranteedMoney(player.id)}
+        
+        {/* Argent */}
+        <td className="px-4 py-3 border-b border-gray-200 text-right">
+          <div className="text-xl font-bold text-gray-900 flex items-center justify-end gap-1">
+            <Banknote className='w-4 h-4 text-green-600'/> {pr.money.toLocaleString()}
           </div>
         </td>
-
-        {/* Valeur d'Achat */}
-        <td className="px-4 py-3 border-b border-gray-200">
-          <div className="text-lg font-semibold text-gray-700">
-            {/* Correction: buyValue existe sur PlayerRoundState */}
-            ${pr.buyValue.toLocaleString()} 
+        
+        {/* Buy Value */}
+        <td className="px-4 py-3 border-b border-gray-200 text-right">
+          <div className="text-md font-medium text-gray-700">
+            ${pr.buyValue.toLocaleString()}
           </div>
         </td>
-
-        {/* Équipement */}
-        <td className="px-4 py-3 border-b border-gray-200">
-          <div className={`flex items-center gap-2 text-sm ${color}`}>
-            <Shield className="w-4 h-4" />
-            <span>{summary}</span>
-          </div>
+        
+        {/* Kills */}
+        <td className="px-4 py-3 border-b border-gray-200 text-center">
+             {renderKills(pr.kills)}
         </td>
-
-        {/* Action (Bouton Buy) */}
+        
+        {/* Inventaire */}
         <td className="px-4 py-3 border-b border-gray-200">
-          {(state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') ? (
-              <button
-                onClick={() => onEquipmentClick(player.id)}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                  player.team === 'CT'
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-              >
-                <ShoppingCart className="w-4 h-4" />
-                Buy
-              </button>
-          ) : (
-             <button
-                disabled
-                className="px-4 py-2 rounded-lg font-medium text-gray-400 bg-gray-100 cursor-not-allowed flex items-center gap-2"
-             >
-                <ShoppingCart className="w-4 h-4" />
-                Buy Disabled
-             </button>
-          )}
+            {renderInventory(pr.inventory)}
         </td>
-
-        {/* Statut */}
-        <td className="px-4 py-3 border-b border-gray-200">
+        
+        {/* État (Alive/Dead) */}
+        <td className="px-4 py-3 border-b border-gray-200 w-[120px]">
           <div className="flex items-center gap-2">
             {pr.isAlive ? (
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
@@ -171,6 +143,20 @@ export function PlayerTable({
             )}
           </div>
         </td>
+        
+        {/* Action Achat */}
+        <td className="px-4 py-3 border-b border-gray-200 text-center">
+            {/* L'achat est uniquement disponible pendant FreezeTime/OvertimeStart */}
+            {(state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') && (
+                <button
+                    onClick={() => onEquipmentClick(player.id)}
+                    className="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors"
+                    title={`Acheter pour ${player.name}`}
+                >
+                    <ShoppingCart className="w-5 h-5" />
+                </button>
+            )}
+        </td>
       </tr>
     );
   };
@@ -178,19 +164,44 @@ export function PlayerTable({
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-             {/* ... Reste de l'en-tête ... */}
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">
+                Joueur (Position)
+              </th>
+              <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Argent ($)
+              </th>
+              <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Valeur d'Achat ($)
+              </th>
+               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Kills
+              </th>
+              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Inventaire
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
+                Statut
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
+                Achat
+              </th>
+            </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {/* CT Table Section */}
             <tr className="bg-blue-50">
-              <td colSpan={6} className="px-4 py-2">
+              <td colSpan={7} className="px-4 py-2">
                 <div className="text-sm font-bold text-blue-900">Counter-Terrorists</div>
               </td>
             </tr>
             {ctPlayers.map(renderPlayerRow)}
+            
+            {/* T Table Section */}
             <tr className="bg-red-50">
-              <td colSpan={6} className="px-4 py-2">
+              <td colSpan={7} className="px-4 py-2">
                 <div className="text-sm font-bold text-red-900">Terrorists</div>
               </td>
             </tr>

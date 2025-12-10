@@ -112,8 +112,10 @@ export function calculateIndividualMoneyGain(
 /**
  * Calcule la valeur d'achat totale de l'équipement d'un joueur.
  */
-export function calculateBuyValue(inventory: GameItem[]): number {
-    return inventory.reduce((total, item) => total + item.price, 0);
+export function calculateBuyValue(inventory: (GameItem | undefined)[]): number {
+    return inventory
+        .filter((item): item is GameItem => item !== undefined)
+        .reduce((total, item) => total + item.price, 0);
 }
 
 /**

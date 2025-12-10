@@ -4,7 +4,6 @@ import {
     MatchState,
     MatchMode,
     MatchPhase,
-    Team,
     Player,
     PlayerRoundState,
     RoundResult,
@@ -18,8 +17,6 @@ import {
     getItemById,
     ARMOR_ITEM_IDS, // Nécessaire pour les vérifications d'achat
     GRENADES_IDS, // Nécessaire pour les vérifications d'achat
-    getBuyableItemsForTeam, // Utile pour valider un achat
-    STARTING_PISTOLS, // Nécessaire pour l'initialisation
 } from '../data/cs2Equipment';
 import {
     calculateBaseRoundReward,
