@@ -1,128 +1,147 @@
-import { Team } from '../types';
+// src/data/cs2Equipment.ts
 
-// --- Types pour ce fichier ---
+/** ----------------- Types et Constantes de Base ----------------- */
 
-// Définition de l'équipement
-export type Equipment = {
-    id: string;
+export type Team = 'CT' | 'T';
+export type ArmorType = 'none' | 'vest' | 'helmet';
+
+// Interface pour tous les items (armes, utilitaires, armure)
+export interface GameItem {
+    id: string; // Identifiant unique (ex: 'ak47', 'defuseKit')
     name: string;
-    team: Team | 'ALL';
+    type: 'Pistol' | 'SMG' | 'Rifle' | 'Shotgun' | 'LMG' | 'Sniper' | 'Grenade' | 'Utility' | 'Armor';
     price: number;
-    killReward: number; // Récompense spécifique pour un kill avec cette arme
-    type: 'Pistol' | 'Heavy' | 'SMG' | 'Rifle' | 'Sniper' | 'Gear' | 'Grenade';
-};
+    killReward?: number; // Optionnel, pour les armes seulement
+    team?: Team; // Optionnel, si l'item est exclusif
+}
 
-// --- Constantes de Bonus d'Argent ---
+// Les récompenses de kill sont définies dans la structure GameItem, mais voici la table de référence (pour le KillReward):
+// Knife: 1500
+// Zeus: 0
+// SMGs (sauf P90): 600
+// Shotguns (sauf XM1014): 900
+// Rifles, Pistols, LMGs, HE, XM1014, P90: 300
+// AWP, SSG 08, Auto Snipers: 100
 
-// Base de récompense de Kill
-export const STANDARD_KILL_REWARD = 300; 
-export const KNIFE_REWARD = 1500;
-export const SHOTGUN_REWARD = 900;
-export const SMG_REWARD = 600;
-export const AWP_REWARD = 100; // AWP seulement, les autres snipers sont à 300
-
-// Plafond d'argent
-export const MAX_MONEY_CAP = 16000;
-
-// Bonus de fin de Round (montant par joueur)
-export const WIN_REWARD = 3250;
-export const LOSS_REWARD_BASE = 1400; // Récompense pour la première défaite
-export const LOSS_STREAK_INCREMENT = 500;
-export const MAX_LOSS_REWARD = 3400; // Plafond: 1400 + 4 * 500 = 3400
-
-// Récompenses pour les objectifs
-export const BOMB_PLANT_REWARD = 300; // Récompense individuelle pour le planteur (si on track l'action)
-export const BOMB_DEFUSE_REWARD = 300; // Récompense individuelle pour le démineur (si on track l'action)
-export const BOMB_PLANT_TEAM_REWARD = 800; // Bonus ajouté aux $ pour chaque T si la bombe a explosé ou si le round a été gagné après plant.
-
-
-// --- Liste Complète des Équipements de CS2 ---
-export const EQUIPMENT_LIST: Equipment[] = [
-    // PISTOLS (Récompense standard 300, sauf CZ75/R8)
-    { id: 'pistol_glock', name: 'Glock-18', team: 'T', price: 200, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_usp', name: 'USP-S', team: 'CT', price: 200, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_p2000', name: 'P2000', team: 'CT', price: 200, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_p250', name: 'P250', team: 'ALL', price: 300, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_tec9', name: 'Tec-9', team: 'T', price: 500, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_fiveseven', name: 'Five-SeveN', team: 'CT', price: 500, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_deagle', name: 'Desert Eagle', team: 'ALL', price: 700, killReward: STANDARD_KILL_REWARD, type: 'Pistol' },
-    { id: 'pistol_cz75a', name: 'CZ75-Auto', team: 'ALL', price: 500, killReward: 300, type: 'Pistol' }, // CZ75 est à 300
-    { id: 'pistol_r8', name: 'R8 Revolver', team: 'ALL', price: 600, killReward: STANDARD_KILL_REWARD, type: 'Pistol' }, 
-    
-    // HEAVY (Récompense 600 pour SMG, 900 pour Shotguns)
-    { id: 'smg_mac10', name: 'MAC-10', team: 'T', price: 1050, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_mp9', name: 'MP9', team: 'CT', price: 1250, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_mp7', name: 'MP7', team: 'ALL', price: 1500, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_ump45', name: 'UMP-45', team: 'ALL', price: 1200, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_p90', name: 'P90', team: 'ALL', price: 2350, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_bizon', name: 'PP-Bizon', team: 'ALL', price: 1400, killReward: SMG_REWARD, type: 'SMG' },
-    { id: 'smg_mp5sd', name: 'MP5-SD', team: 'ALL', price: 1500, killReward: SMG_REWARD, type: 'SMG' },
-
-    // SHOTGUNS (Récompense 900)
-    { id: 'shotgun_nova', name: 'Nova', team: 'ALL', price: 1050, killReward: SHOTGUN_REWARD, type: 'Heavy' },
-    { id: 'shotgun_xm1014', name: 'XM1014', team: 'ALL', price: 2000, killReward: SHOTGUN_REWARD, type: 'Heavy' },
-    { id: 'shotgun_mag7', name: 'MAG-7', team: 'CT', price: 1300, killReward: SHOTGUN_REWARD, type: 'Heavy' },
-    { id: 'shotgun_sawedoff', name: 'Sawed-Off', team: 'T', price: 1100, killReward: SHOTGUN_REWARD, type: 'Heavy' },
-
-    // RIFLES (Récompense standard 300)
-    { id: 'rifle_galilar', name: 'Galil AR', team: 'T', price: 1800, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_famas', name: 'FAMAS', team: 'CT', price: 2250, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_ak47', name: 'AK-47', team: 'T', price: 2700, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_m4a4', name: 'M4A4', team: 'CT', price: 3100, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_m4a1s', name: 'M4A1-S', team: 'CT', price: 2900, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_aug', name: 'AUG', team: 'CT', price: 3300, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    { id: 'rifle_sg553', name: 'SG 553', team: 'T', price: 3000, killReward: STANDARD_KILL_REWARD, type: 'Rifle' },
-    
-    // SNIPERS (Récompense 300 pour Scout/SSG08, 100 pour AWP)
-    { id: 'sniper_ssg08', name: 'SSG 08', team: 'ALL', price: 1700, killReward: STANDARD_KILL_REWARD, type: 'Sniper' },
-    { id: 'sniper_awp', name: 'AWP', team: 'ALL', price: 4750, killReward: AWP_REWARD, type: 'Sniper' },
-    { id: 'sniper_g3sg1', name: 'G3SG1', team: 'T', price: 5000, killReward: STANDARD_KILL_REWARD, type: 'Sniper' },
-    { id: 'sniper_scar20', name: 'SCAR-20', team: 'CT', price: 5000, killReward: STANDARD_KILL_REWARD, type: 'Sniper' },
-    
-    // HEAVY MACHINE GUNS (Récompense standard 300)
-    { id: 'heavy_negev', name: 'Negev', team: 'ALL', price: 1700, killReward: STANDARD_KILL_REWARD, type: 'Heavy' },
-    { id: 'heavy_m249', name: 'M249', team: 'ALL', price: 4200, killReward: STANDARD_KILL_REWARD, type: 'Heavy' },
-
-    // GEAR (Équipement)
-    { id: 'kevlar', name: 'Kevlar', team: 'ALL', price: 650, killReward: 0, type: 'Gear' },
-    { id: 'kevlar_helm', name: 'Kevlar + Helm', team: 'ALL', price: 1000, killReward: 0, type: 'Gear' },
-    { id: 'defuse_kit', name: 'Defuse Kit', team: 'CT', price: 400, killReward: 0, type: 'Gear' },
-    { id: 'zeus', name: 'Zeus x27', team: 'ALL', price: 200, killReward: 0, type: 'Gear' },
-
-    // GRENADES (Récompense 0)
-    { id: 'grenade_he', name: 'HE Grenade', team: 'ALL', price: 300, killReward: 0, type: 'Grenade' },
-    { id: 'grenade_flash', name: 'Flashbang', team: 'ALL', price: 200, killReward: 0, type: 'Grenade' },
-    { id: 'grenade_smoke', name: 'Smoke Grenade', team: 'ALL', price: 300, killReward: 0, type: 'Grenade' },
-    { id: 'grenade_molotov', name: 'Molotov', team: 'T', price: 600, killReward: 0, type: 'Grenade' },
-    { id: 'grenade_incendiary', name: 'Incendiary Grenade', team: 'CT', price: 600, killReward: 0, type: 'Grenade' },
-    { id: 'grenade_decoy', name: 'Decoy Grenade', team: 'ALL', price: 50, killReward: 0, type: 'Grenade' },
+export const STARTING_PISTOLS: GameItem[] = [
+    { id: 'usps', name: 'USP-S', type: 'Pistol', price: 0, killReward: 300, team: 'CT' },
+    { id: 'p2000', name: 'P2000', type: 'Pistol', price: 0, killReward: 300, team: 'CT' },
+    { id: 'glock', name: 'Glock-18', type: 'Pistol', price: 0, killReward: 300, team: 'T' },
 ];
 
-/**
- * Récupère le montant de la récompense de kill pour une arme spécifique.
- * Utilise la liste EQUIPMENT_LIST pour la logique.
- * @param weaponId L'ID de l'arme (exemple: 'rifle_ak47')
- * @returns Le montant de la récompense en dollars.
- */
-export const getKillReward = (weaponId: string): number => {
-    // Cas spécial pour le couteau (souvent pas dans l'inventaire équipable)
-    if (weaponId === 'knife') return KNIFE_REWARD; 
+export const ALL_WEAPONS: GameItem[] = [
+    // PISTOLS (Kill Reward 300)
+    { id: 'p250', name: 'P250', type: 'Pistol', price: 300, killReward: 300 },
+    { id: 'fiveseven', name: 'Five-SeveN', type: 'Pistol', price: 500, killReward: 300, team: 'CT' },
+    { id: 'tec9', name: 'Tec-9', type: 'Pistol', price: 500, killReward: 300, team: 'T' },
+    { id: 'cz75auto', name: 'CZ75-Auto', type: 'Pistol', price: 500, killReward: 300 },
+    { id: 'deagle', name: 'Desert Eagle', type: 'Pistol', price: 700, killReward: 300 },
+    { id: 'r8revolver', name: 'R8 Revolver', type: 'Pistol', price: 600, killReward: 300 },
     
-    const equipment = EQUIPMENT_LIST.find(e => e.id === weaponId);
+    // SMGS (Kill Reward 600, sauf P90)
+    { id: 'mac10', name: 'MAC-10', type: 'SMG', price: 1050, killReward: 600, team: 'T' },
+    { id: 'mp9', name: 'MP9', type: 'SMG', price: 1250, killReward: 600, team: 'CT' },
+    { id: 'mp7', name: 'MP7', type: 'SMG', price: 1500, killReward: 600 },
+    { id: 'mp5sd', name: 'MP5-SD', type: 'SMG', price: 1500, killReward: 600 },
+    { id: 'ump45', name: 'UMP-45', type: 'SMG', price: 1200, killReward: 600 },
+    { id: 'ppbizon', name: 'PP-Bizon', type: 'SMG', price: 1400, killReward: 600 },
+    { id: 'p90', name: 'P90', type: 'SMG', price: 2350, killReward: 300 }, // Exception: 300
     
-    // Retourne la récompense spécifique si trouvée, sinon la récompense standard
-    return equipment ? equipment.killReward : STANDARD_KILL_REWARD;
+    // SHOTGUNS (Kill Reward 900, sauf XM1014)
+    { id: 'sawedoff', name: 'Sawed-Off', type: 'Shotgun', price: 1100, killReward: 900, team: 'T' },
+    { id: 'nova', name: 'Nova', type: 'Shotgun', price: 1050, killReward: 900 },
+    { id: 'xm1014', name: 'XM1014', type: 'Shotgun', price: 2000, killReward: 300 }, // Exception: 300
+    { id: 'mag7', name: 'MAG-7', type: 'Shotgun', price: 1300, killReward: 900, team: 'CT' },
+
+    // RIFLES (Kill Reward 300)
+    { id: 'famas', name: 'FAMAS', type: 'Rifle', price: 2050, killReward: 300, team: 'CT' },
+    { id: 'galilar', name: 'Galil AR', type: 'Rifle', price: 1800, killReward: 300, team: 'T' },
+    { id: 'm4a4', name: 'M4A4', type: 'Rifle', price: 3100, killReward: 300, team: 'CT' },
+    { id: 'm4a1s', name: 'M4A1-S', type: 'Rifle', price: 2900, killReward: 300, team: 'CT' },
+    { id: 'ak47', name: 'AK-47', type: 'Rifle', price: 2700, killReward: 300, team: 'T' },
+    { id: 'aug', name: 'AUG', type: 'Rifle', price: 3300, killReward: 300, team: 'CT' },
+    { id: 'sg553', name: 'SG 553', type: 'Rifle', price: 3000, killReward: 300, team: 'T' },
+    
+    // SNIPERS (Kill Reward 100, sauf SSG 08 et AWP)
+    { id: 'ssg08', name: 'SSG 08', type: 'Sniper', price: 1700, killReward: 300 }, // Correction: SSG 08 = 300 (Nouvelles règles)
+    { id: 'awp', name: 'AWP', type: 'Sniper', price: 4750, killReward: 100 },
+    { id: 'g3sg1', name: 'G3SG1', type: 'Sniper', price: 5000, killReward: 100, team: 'T' },
+    { id: 'scar20', name: 'SCAR-20', type: 'Sniper', price: 5000, killReward: 100, team: 'CT' },
+
+    // MACHINE GUNS (Kill Reward 300)
+    { id: 'm249', name: 'M249', type: 'LMG', price: 5200, killReward: 300 },
+    { id: 'negev', name: 'Negev', type: 'LMG', price: 1700, killReward: 300 },
+    
+    // MELEE (Kill Reward 1500)
+    { id: 'knife', name: 'Couteau', type: 'Utility', price: 0, killReward: 1500 },
+    { id: 'zeus', name: 'Zeus x27', type: 'Utility', price: 200, killReward: 0 },
+];
+
+export const ALL_GRENADES: GameItem[] = [
+    // GRENADES (Kill Reward 300 pour HE)
+    { id: 'hegrenade', name: 'HE Grenade', type: 'Grenade', price: 300, killReward: 300 },
+    { id: 'flashbang', name: 'Flashbang', type: 'Grenade', price: 200 },
+    { id: 'smokegrenade', name: 'Smoke Grenade', type: 'Grenade', price: 300 },
+    { id: 'incendiary', name: 'Incendiary Grenade', type: 'Grenade', price: 600, team: 'CT' },
+    { id: 'molotov', name: 'Molotov', type: 'Grenade', price: 400, team: 'T' },
+    { id: 'decoy', name: 'Decoy Grenade', type: 'Grenade', price: 50 },
+];
+
+export const UTILITY_AND_ARMOR: GameItem[] = [
+    { id: 'defusekit', name: 'Kit de Défuse', type: 'Utility', price: 400, team: 'CT' },
+    { id: 'vest', name: 'Armure (Seulement Veste)', type: 'Armor', price: 650 },
+    { id: 'vesthelm', name: 'Armure + Casque', type: 'Armor', price: 1000 },
+];
+
+// Catalogue principal de tous les items achetable (exclut les pistolets de départ et le couteau)
+export const ALL_EQUIPMENT: GameItem[] = [
+    ...ALL_WEAPONS.filter(item => item.price > 0),
+    ...ALL_GRENADES,
+    ...UTILITY_AND_ARMOR,
+];
+
+/** ----------------- Constantes Économiques (Fin de Manche) ----------------- */
+
+export const ECONOMIC_CONSTANTS = {
+    // Argent de Départ
+    STARTING_MONEY: 800,
+    STARTING_MONEY_OVERTIME: 16000,
+    
+    // Récompenses de Victoire
+    WIN_ROUND_BONUS: 3500,
+    
+    // Bonus spécifiques
+    CT_TEAM_KILL_BONUS: 50, // Bonus pour chaque CT quand un T est tué
+    T_PLANT_BONUS_WIN: 300, // Bonus individuel si la bombe plante et l'équipe T gagne
+    T_PLANT_BONUS_LOSS: 800, // Bonus individuel si la bombe plante et l'équipe T perd
+    CT_DEFUSE_BONUS: 300, // Bonus individuel pour le défuseur
+    
+    // Séquence du Loss Bonus (indices 0 à 4 = 1 à 5 défaites)
+    LOSS_BONUS_SEQUENCE: [1400, 1900, 2400, 2900, 3400],
 };
 
-// --- Fonctions utilitaires ---
+/** ----------------- Fonctions d'Utilitaires ----------------- */
 
 /**
- * Calcule la valeur totale d'équipement à partir d'une liste d'IDs d'équipement.
- * Cette fonction sera utilisée dans src/utils/economicCalculations.ts.
+ * Récupère un item à partir de son ID (ex: 'ak47', 'defusekit').
  */
-export const calculateEquipmentValue = (equipmentIds: string[]): number => {
-    return equipmentIds.reduce((total, id) => {
-        const item = EQUIPMENT_LIST.find(e => e.id === id);
-        return total + (item ? item.price : 0);
-    }, 0);
-};
+export function getItemById(id: string): GameItem | undefined {
+    return [
+        ...STARTING_PISTOLS, 
+        ...ALL_WEAPONS, 
+        ...ALL_GRENADES, 
+        ...UTILITY_AND_ARMOR
+    ].find(item => item.id === id);
+}
+
+/**
+ * Récupère tous les items achetable pour une équipe donnée.
+ */
+export function getBuyableItemsForTeam(team: Team): GameItem[] {
+    const isCt = team === 'CT';
+    
+    // Le pistolet de départ est géré séparément dans la logique du joueur (defaultPistol)
+    return ALL_EQUIPMENT.filter(item => 
+        !item.team || item.team === team || (isCt && item.id === 'incendiary') || (!isCt && item.id === 'molotov')
+    );
+}

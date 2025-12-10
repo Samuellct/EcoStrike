@@ -1,60 +1,113 @@
-// src/types.ts
+// src/types/index.ts
 
-// --- Définitions de Base ---
+// Les types importés de cs2Equipment.ts seront définis à l'étape suivante.
+// Supposons qu'ils existent pour le moment.
+// import { Team, ArmorType } from '../data/cs2Equipment'; 
 
+/** ----------------- Types de Données Brutes (Définition de la structure) ----------------- */
+
+// Nouvelle définition pour les équipes
 export type Team = 'CT' | 'T';
 
-// --- Types pour les Joueurs et l'État du Round ---
+// Nouvelle définition pour les modes de match
+export type MatchMode = 'Standard' | 'Premier';
 
-export type Player = {
-  id: string;
+// Nouvelle définition des phases de l'application
+export type MatchPhase = 'Config' | 'FreezeTime' | 'RoundDuration' | 'RoundEndSummary' | 'HalfTime' | 'OvertimeStart';
+
+
+/** ----------------- Interfaces d'Équipement et de Kill ----------------- */
+
+// Représente un seul item d'équipement possédé par un joueur
+export interface Equipment {
+  id: string; // Ex: 'ak47', 'defuseKit', 'heGrenade'
+  price: number; // Prix d'achat (pour le calcul du Buy Value)
+  // Ajout de 'isGained' si l'item a été ramassé ou donné
+}
+
+// Représente les kills effectués par un joueur pendant une manche
+export interface KillEntry {
+  weaponId: string; // ID de l'arme utilisée (pour obtenir la Kill Reward spécifique)
+  count: number;
+}
+
+
+/** ----------------- Interfaces de Joueur et d'État de Manche ----------------- */
+
+export interface Player {
+  id: string; // Ex: 'CT-1', 'T-5'
   name: string;
   team: Team;
-  position: number; // Pour l'ordre d'affichage
-};
+  position: number;
+  // Choix permanent pour les CT, Glock pour les T.
+  defaultPistol: 'USP-S' | 'P2000' | 'GLOCK';
+}
 
-// État spécifique du joueur pour le round en cours
-export type PlayerRound = {
-  money: number;
-  equipmentValue: number; // Valeur totale de l'équipement (Kevlar + Armes + Utilitaire)
-  isAlive: boolean; // Si le joueur a survécu au round précédent
-  // Ajout de 'kills' ou 'deaths' peut être géré ici ou au niveau de MatchState,
-  // mais la transition s'occupe des kills pour l'économie.
-};
+// L'état économique d'un joueur pour la manche actuelle et la transition
+export interface PlayerRoundState {
+  playerId: string;
+  money: number; // Argent actuel du joueur
+  
+  // Équipement possédé à la fin de la phase d'achat (pour le calcul du Buy Value)
+  inventory: Equipment[]; 
+  
+  isAlive: boolean; // État de survie pour la manche passée (conservé si VIVANT)
+  
+  // Données saisies à la fin de la manche (ROUND_END_SUMMARY)
+  kills: KillEntry[];
+  
+  // Prévisions pour la manche suivante
+  minimumGuaranteedNextRound: number; // (Argent Actuel + Loss Bonus Max)
+}
 
 
-// --- Types pour l'Équipement et l'Économie ---
+/** ----------------- Interfaces d'État de l'Équipe ----------------- */
 
-export type Equipment = {
-    id: string;
-    name: string;
-    team: Team | 'ALL'; // CT, T, ou disponible pour les deux
-    price: number;
-    // Peut ajouter une propriété pour la récompense de kill si on veut un suivi précis
-    killReward?: number; 
-};
+export interface TeamState {
+  score: number;
+  lossStreak: number; // 1 à 5 (Max)
+  // Ajoutez isSideSwapped pour gérer les moitiés au-delà de la 12
+}
 
-// --- Types pour les Résultats de Round ---
+/** ----------------- Interfaces d'Événements de Manche ----------------- */
 
-export type RoundResult = {
+export interface RoundResult {
   winner: Team;
-  winType: 'elimination' | 'objective' | 'time'; // Élimination, Objectif (Bomb/Defuse), Temps Expiré
-  bombPlanted: boolean; // True si la bombe a été plantée à un moment donné
-  // Note: La fonction onNextRound passe les kills séparément.
-};
+  // bombPlanted et defused sont nécessaires pour la logique du loss bonus et les gains T/CT
+  bombPlanted: boolean;
+  bombDefused: boolean;
+  // Si le T a perdu mais que la bombe a explosé après le temps
+  tLostButExploded: boolean;
+}
 
-// --- État Global du Match ---
+/** ----------------- Interfaces de l'État Global ----------------- */
 
-export type MatchState = {
-  currentRound: number;
-  phase: 'buy' | 'freeze' | 'action'; // Phase du jeu
-  teamScores: Record<Team, number>;
-  teamLossStreaks: Record<Team, number>; // La série de défaites pour calculer le bonus
-  roundHistory: RoundResult[]; // L'historique des résultats de round
+export interface MatchState {
+  matchMode: MatchMode;
+  currentRound: number; // Manches 1, 2, ..., 12, 13 (changement de côté), 25 (Prolongation)
+  phase: MatchPhase;
   
-  // Tableau de tous les joueurs
-  players: Player[];
+  CT: TeamState;
+  T: TeamState;
   
-  // État du round pour chaque joueur (argent, équipement, survie)
-  playerRounds: Record<string, PlayerRound>; 
-};
+  // Liste des 10 joueurs
+  players: Player[]; 
+  
+  // État économique de tous les joueurs pour la manche actuelle
+  playerRoundStates: Record<string, PlayerRoundState>;
+  
+  // Historique des résultats de manche (pour la barre visuelle)
+  roundHistory: RoundResult[];
+}
+
+/** ----------------- Interfaces de Gifting ----------------- */
+
+// Interface pour la saisie de l'achat d'équipement, y compris le gifting
+export interface PurchaseInput {
+  playerId: string; // L'acheteur
+  itemBoughtId: string;
+  // Si null, l'achat est pour le joueur lui-même
+  recipientId: string | null; 
+}
+
+// L'export de l'interface MatchState est la principale source de vérité.
