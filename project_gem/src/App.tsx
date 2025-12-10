@@ -1,85 +1,65 @@
-// src/App.tsx (CORRIGÉ ET COMPLET)
+// src/App.tsx (MODIFIÉ)
 
 import { useState } from 'react';
 import { MatchDashboard } from './components/MatchDashboard';
 import { PlayerTable } from './components/PlayerTable';
 import { EquipmentPurchase } from './components/EquipmentPurchase';
 import { RoundTransition } from './components/RoundTransition';
-import { ArrowRight, LogOut } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useMatchState } from './state/MatchContext'; 
 import { MatchConfig } from './components/MatchConfig'; 
+import { Team } from './types/index'; 
+import { RoundTimer } from './components/RoundTimer'; // NOUVEL IMPORT
+
+// La fonction initializeMatch n'est plus nécessaire ici.
 
 function App() {
-  // Récupération de l'état global et de la fonction dispatch
+  // Remplacer useState par useMatchState
   const { state, dispatch } = useMatchState();
 
-  // État local pour gérer quel joueur est en cours d'achat
+  // Les états locaux pour l'UI restent ici
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   
   const selectedPlayer = state.players.find(p => p.id === selectedPlayerId);
 
-  // Phases de contrôle pour le rendu
-  const isConfigPhase = state.phase === 'Config';
+  // -- Logique de Phase --
   const isTransitionPhase = state.phase === 'RoundEndSummary';
-  const isRoundDuration = state.phase === 'RoundDuration';
-  const isMatchFinished = state.phase === 'Finished';
-
-  // Callback pour ouvrir le pop-up d'achat
-  const handleEquipmentClick = (playerId: string) => {
-    if (state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') {
-        setSelectedPlayerId(playerId);
-    }
-  };
+  const isRoundActive = state.phase === 'FreezeTime' || state.phase === 'RoundDuration';
   
-  // Fonction de changement de nom (non implémentée dans le reducer, laissée en placeholder)
-  const handlePlayerNameChange = (_playerId: string, _name: string) => {
-    console.warn(`Functionality 'UPDATE_PLAYER_NAME' not implemented in reducer.`);
-  };
+  // MODIFICATION CLÉ: L'achat est maintenant possible pendant RoundDuration
+  const isPurchasePhase = state.phase === 'FreezeTime' || state.phase === 'OvertimeStart' || state.phase === 'RoundDuration';
 
-
-  // --- Rendu Conditionnel (Phase Config) ---
-  if (isConfigPhase) {
+  // --- RENDU ---
+  
+  if (state.phase === 'Config') {
     return <MatchConfig dispatch={dispatch} />;
   }
   
-  // --- Rendu Conditionnel (Match Terminé) ---
-  if (isMatchFinished) {
-      return (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-               <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md text-center">
-                    <h2 className="text-3xl font-bold mb-4 text-green-700">Match Terminé !</h2>
-                    <p className='text-xl mb-6'>Score Final: {state.teamState.CT.score} - {state.teamState.T.score}</p>
-                    <button 
-                        onClick={() => dispatch({ type: 'END_MATCH' })}
-                        className="w-full bg-red-600 text-white py-3 rounded hover:bg-red-700 transition flex items-center justify-center gap-2"
-                    >
-                         <LogOut className='w-5 h-5'/> Revenir à la Configuration
-                    </button>
-               </div>
-          </div>
-      );
-  }
-
-  // --- Rendu Principal du Tracker ---
   return (
-    <div className="min-h-screen bg-gray-100 pb-12">
-      
-      {/* 1. Tableau de Bord */}
+    <div className='min-h-screen bg-gray-100'>
       <MatchDashboard />
+      
+      {/* 2. Chronomètre au centre (NOUVEAU) */}
+      <div className='flex justify-center'>
+        <RoundTimer /> 
+      </div>
 
-      {/* 2. Tableau des Joueurs */}
-      <PlayerTable 
-        onEquipmentClick={handleEquipmentClick} 
-        onPlayerNameChange={handlePlayerNameChange} 
-      /> 
+      <div className='max-w-7xl mx-auto'>
+        <PlayerTable onEquipmentClick={setSelectedPlayerId} />
+      </div>
 
-      {/* Bouton de Fin de Manche / Saisie des Résultats */}
-      <div className="max-w-7xl mx-auto px-6 mt-6">
-        {isRoundDuration && (
+      <div className='mt-8 flex justify-center'>
+        {/* NOUVEAU: Le bouton s'affiche dès que RoundDuration démarre */}
+        {isRoundActive && (
           <button 
-            // Clic: Passe en phase de saisie des résultats
+            // Ce bouton force le passage à la phase de saisie (RoundEndSummary)
             onClick={() => dispatch({ type: 'SET_PHASE', payload: 'RoundEndSummary' })}
-            className={`w-full bg-gray-900 text-white font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-3 shadow-lg hover:bg-gray-800`}
+            // MODIFICATION CLÉ: Ajout de la classe d'animation 'animate-pulse-cs' lorsque la manche est terminée (RoundEndSummary)
+            className={`
+                       px-8 py-4 bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-3 shadow-lg 
+                       // Utiliser la surbrillance si la phase de saisie est active (signe que le temps est écoulé)
+                       ${isTransitionPhase ? 'animate-pulse-cs' : ''} 
+                      `}
           >
             <span className="text-lg">Fin de Manche / Saisie des Résultats</span>
             <ArrowRight className="w-6 h-6" />
@@ -87,49 +67,27 @@ function App() {
         )}
       </div>
 
-      {/* 3. Pop-up d'Achat (visible pendant FreezeTime et OvertimeStart) */}
-      {selectedPlayer && selectedPlayerId && (state.phase === 'FreezeTime' || state.phase === 'OvertimeStart') && (
+      {/* 3. Pop-up d'Achat (FreezeTime / OvertimeStart / RoundDuration) (MODIFIÉ) */}
+      {selectedPlayer && selectedPlayerId && isPurchasePhase && (
         <EquipmentPurchase
           player={selectedPlayer}
           playerRoundState={state.playerRoundStates[selectedPlayerId]}
-          // Le callback envoie l'action BUY_EQUIPMENT au reducer
-          onPurchase={(input) => dispatch({ type: 'BUY_EQUIPMENT', payload: input })} 
+          onPurchase={(input) => dispatch({ type: 'BUY_EQUIPMENT', payload: input })} // Utilisation du dispatch
           onClose={() => setSelectedPlayerId(null)}
         />
       )}
 
-      {/* 4. Pop-up de Saisie des Événements (visible pendant RoundEndSummary) */}
+      {/* 4. Pop-up de Saisie des Événements (RoundEndSummary) */}
       {isTransitionPhase && (
         <RoundTransition
           matchState={state}
           dispatch={dispatch}
-          // La logique de fin de manche est maintenant dans RoundTransition qui appelle 'APPLY_ROUND_RESULT'.
-          // Lorsque l'utilisateur ferme, on détermine la phase suivante (Avance, Mi-temps, Prolongation, Fin)
-          onClose={() => {
-              const ctScore = state.teamState.CT.score;
-              const tScore = state.teamState.T.score;
-              const round = state.currentRound;
-
-              if (round === 12) { 
-                  // Après la manche 12, on passe à HalfTime pour le changement de côté
-                  dispatch({ type: 'SET_PHASE', payload: 'HalfTime' });
-              } else if (round === 24 && ctScore !== tScore) { 
-                  // Fin du match sans prolongation
-                  dispatch({ type: 'SET_PHASE', payload: 'Finished' });
-              } else if (round === 24 && ctScore === tScore && state.matchMode === 'Premier') {
-                  // Fin du match en égalité en mode Premier: on initie la prolongation
-                  dispatch({ type: 'INITIATE_OVERTIME' }); 
-              } else if (round >= 24 && round % 6 === 0 && ctScore !== tScore) { 
-                  // Fin de prolongation par différence de deux (toutes les 6 manches)
-                  dispatch({ type: 'SET_PHASE', payload: 'Finished' });
-              } else {
-                  // Avance au prochain round (FreezeTime par défaut)
-                  dispatch({ type: 'ADVANCE_TO_NEXT_ROUND' });
-              }
-          }}
+          onClose={() => dispatch({ type: 'SET_PHASE', payload: 'FreezeTime' })}
+          // La logique de fin de manche est maintenant dans RoundTransition qui appelle 'APPLY_ROUND_RESULT'
         />
       )}
       
+      {/* TODO: Gérer l'affichage des joueurs pendant la phase RoundDuration si l'on veut un affichage minimaliste */}
     </div>
   );
 }
