@@ -74,8 +74,7 @@ export function calculateTotalTKills(
     if (!pr) return;
     
     if (pr.killInputMode === 'raw') {
-      // En mode raw, on ne peut pas compter les kills individuels
-      // On assume que le joueur a entré le montant correct
+      // Le mode raw n'integre pas de module de verif donc il faut être certain de mettre le montant correct pour ne pas fausser les caulcus
       return;
     }
     
@@ -97,12 +96,12 @@ export function calculateRoundReward(
     // Victoire
     let reward = ECONOMIC_CONSTANTS.winByObjective;
     
-    // Bonus planteur si T
+    // Bonus plant si T
     if (team === 'T' && result.planterId === playerId) {
       reward += ECONOMIC_CONSTANTS.tPlanterBonus;
     }
     
-    // ✅ AJOUT: Bonus défuseur si CT
+    // Bonus defuse si CT
     if (team === 'CT' && result.defuserId === playerId) {
       reward += ECONOMIC_CONSTANTS.ctDefuseBonus;
     }
@@ -111,10 +110,9 @@ export function calculateRoundReward(
   } else {
     // Défaite
     if (team === 'T') {
-      // Cas spécial: T perd par temps écoulé sans plant
+      // Cas où T perd par temps écoulé sans plant
       if (result.winType === 'time' && !result.bombPlanted) {
-        // ⚠️ CORRECTION: Les T qui perdent par temps écoulé sans plant ne reçoivent RIEN
-        // SAUF s'ils sont morts (ils reçoivent le loss bonus)
+        // Les T qui perdent par temps écoulé sans plant ne reçoivent RIEN, SAUF s'ils sont morts (en gros ils recoivent le loss bonus)
         if (result.survivorIds.includes(playerId)) {
           return 0; // Vivant = pas de reward
         } else {

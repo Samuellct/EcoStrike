@@ -51,12 +51,12 @@ export function EquipmentPurchase({
     !STARTING_PISTOLS.T.some(p => p.name === w.name)
   );
   
-  // ✅ CORRECTION: Bloquer le pistolet non-choisi pour les CT
+  // Bloquer le pistolet non choisi pour les CT
   const secondaryWeapons = PISTOLS.filter(w => {
     // Filtrer par team
     if (w.team && w.team !== player.team) return false;
     
-    // ✅ Si CT, bloquer le pistolet starter non-choisi
+    // Si CT, bloquer le pistolet starter non choisi
     if (player.team === 'CT') {
       if (player.startingPistol === 'USP-S' && w.name === 'P2000') return false;
       if (player.startingPistol === 'P2000' && w.name === 'USP-S') return false;

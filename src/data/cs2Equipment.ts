@@ -88,19 +88,18 @@ export const EQUIPMENT_PRICES = {
   zeus: 200,
 };
 
-// ⚠️ CORRECTIONS selon le prompt (Décembre 2025)
 export const ECONOMIC_CONSTANTS = {
   startingMoney: 800,
   halftimeMoney: 800, // Reset à la mi-temps
   overtimeMoney: 16000, // Prolongation mode Premier
-  winByElimination: 3500, // Correction: 3500 (pas 3250)
-  winByObjective: 3500, // Victoire objective
+  winByElimination: 3500, // A VERIF, maybe 3250
+  winByObjective: 3500, // Victoire "normale" selon le side
   ctTeamKillBonus: 50, // Bonus partagé CT
   tPlantBonus: 800, // Bonus plant
   tPlanterBonus: 300, // Bonus individuel planteur
   ctDefuseBonus: 300, // Bonus defuse
   knifeKillReward: 1500,
-  zeusKillReward: 0, // Zeus ne donne rien
+  zeusKillReward: 0, // Zeus donne 0$ si on kill avec
   lossBonus: [1400, 1900, 2400, 2900, 3400],
 };
 
@@ -130,7 +129,7 @@ export const KILL_REWARDS: Record<string, number> = {
 };
 
 export function getKillReward(weaponName: string): number {
-  return KILL_REWARDS[weaponName] ?? 300; // Default 300
+  return KILL_REWARDS[weaponName] ?? 300; // Default 300 juste pr test
 }
 
 export function getAllWeapons(team: Team): Weapon[] {

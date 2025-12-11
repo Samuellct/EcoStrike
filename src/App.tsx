@@ -207,7 +207,7 @@ function App() {
         // Kill rewards
         const killReward = calculatePlayerKillReward(currentRound);
         
-        // Bonus CT partagé (si CT et que des T ont été tués)
+        // Bonus CT partagé (50$ par mort // A VERIF)
         const sharedBonus = player.team === 'CT' ? ctSharedBonus : 0;
         
         // Round reward
@@ -221,7 +221,7 @@ function App() {
         const totalReward = killReward + sharedBonus + roundReward;
 
         if (isAlive) {
-          // Survivant: garde son équipement
+          // Survivant: garde son equipement
           newPlayerRounds[player.id] = {
             ...currentRound,
             money: currentRound.money + totalReward,
@@ -231,7 +231,7 @@ function App() {
             savedEquipment: null,
           };
         } else {
-          // Mort: perd tout sauf l'argent
+          // Mort: perd tout sauf argent
           newPlayerRounds[player.id] = {
             playerId: player.id,
             money: currentRound.money + totalReward,
@@ -253,13 +253,13 @@ function App() {
 
       const nextRound = prev.currentRound + 1;
 
-      // ============ HALFTIME (Round 13) ============
+      // ============ HALFTIME : Round 13 ============
       if (nextRound === 13) {
         // Swap sides
         const newCTSideIds = [...prev.tSideIds];
         const newTSideIds = [...prev.ctSideIds];
 
-        // Reset money à $800
+        // Reset money à 800$
         Object.keys(newPlayerRounds).forEach(playerId => {
           const player = prev.players.find(p => p.id === playerId)!;
           const newTeam = newCTSideIds.includes(playerId) ? 'CT' : 'T';

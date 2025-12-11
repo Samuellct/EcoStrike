@@ -28,11 +28,11 @@ export interface PlayerRound {
   grenades: string[];
   hasDefuseKit: boolean;
   hasZeus: boolean;
-  // Nouveau: système de saisie des kills
+  // système de saisie des kills
   killInputMode: KillInputMode;
   rawKillReward: number;
   detailedKills: DetailedKill[];
-  // Nouveau: pour la conservation d'équipement
+  // module pour la conservation d'équipement
   savedEquipment: {
     armor: ArmorType;
     primaryWeapon: string;
@@ -55,10 +55,10 @@ export interface MatchState {
   playerRounds: Record<string, PlayerRound>;
   roundHistory: Team[]; // Historique visuel des rounds
   timer: number; // Timer en secondes
-  // Nouveau: gestion overtime
+  // gestion overtime
   isOvertime: boolean;
   overtimeRounds: number;
-  // Nouveau: side tracking pour swap
+  // side tracking pour swap
   ctSideIds: string[]; // IDs des joueurs actuellement côté CT
   tSideIds: string[]; // IDs des joueurs actuellement côté T
 }
@@ -67,8 +67,8 @@ export interface RoundResult {
   winner: Team;
   winType: 'elimination' | 'objective' | 'time';
   bombPlanted: boolean;
-  planterId?: string; // ID du joueur qui a planté
-  defuserId?: string; // ✅ ID du joueur qui a défusé
+  planterId?: string; // ID du joueur qui a planté la bombe
+  defuserId?: string; // ID du joueur qui a defuse la bombe
   survivorIds: string[];
 }
 

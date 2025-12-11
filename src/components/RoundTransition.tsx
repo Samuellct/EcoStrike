@@ -22,7 +22,7 @@ export function RoundTransition({
   const [winType, setWinType] = useState<'elimination' | 'objective' | 'time'>('elimination');
   const [bombPlanted, setBombPlanted] = useState(false);
   const [planterId, setPlanterId] = useState<string>('');
-  const [defuserId, setDefuserId] = useState<string>(''); // ✅ Ajout défuseur
+  const [defuserId, setDefuserId] = useState<string>('');
 
   const allWeapons = getAllWeaponNames();
 
@@ -36,7 +36,7 @@ export function RoundTransition({
       winType,
       bombPlanted,
       planterId: planterId || undefined,
-      defuserId: defuserId || undefined, // ✅ Ajout défuseur
+      defuserId: defuserId || undefined,
       survivorIds,
     });
   };
@@ -257,7 +257,7 @@ export function RoundTransition({
         </div>
 
         <div className="p-6 space-y-6 max-h-[calc(90vh-8rem)] overflow-y-auto">
-          {/* Winner Selection */}
+          {/* Winner select */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Vainqueur</h3>
@@ -332,7 +332,7 @@ export function RoundTransition({
               </div>
             )}
 
-            {/* ✅ AJOUT: Défuseur CT */}
+            {/* desamorceur CT */}
             {winner === 'CT' && winType === 'objective' && (
               <div className="border-t border-gray-200 pt-4">
                 <label className="block text-sm text-gray-600 mb-2">
